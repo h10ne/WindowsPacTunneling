@@ -59,7 +59,10 @@ public partial class Form1 : Form
             lblCustomIps,
             pnlCustomIps,
             txtAddIp,
-            btnAddIp);
+            btnAddIp,
+            btnApply,
+            btnShowPac,
+            btnDisable);
 
         ProxyLayout.Configure(
             tabProxy,
@@ -72,8 +75,15 @@ public partial class Form1 : Form
             btnStartProxy,
             btnStopProxy);
 
-        TunnelingLayout.ConfigureFooter(pnlFooter, btnApply, btnShowPac, btnDisable, lblStatus);
-        TunnelingLayout.LayoutFooter(pnlFooter, btnApply, btnShowPac, btnDisable, lblStatus);
+        SettingsLayout.Configure(
+            tabSettings,
+            chkStartWithWindows,
+            chkStartProxyWithApp,
+            chkNotifyOnMinimizeToTray,
+            btnOpenDataFolder,
+            btnSave);
+
+        TunnelingLayout.ConfigureStatusBar(pnlFooter, lblStatus);
 
         pnlFooter.Paint += (_, e) =>
         {
@@ -104,13 +114,13 @@ public partial class Form1 : Form
         UiStyler.StyleTextBox(txtAddIp);
         UiStyler.StyleTextBox(txtProxyLink);
         UiStyler.StyleTextBox(txtLocalPort);
-        UiStyler.StyleCheckBox(chkStartWithWindows);
         UiStyler.StyleTabPage(tabTunneling);
         UiStyler.StyleTabPage(tabProxy);
         UiStyler.StyleTabPage(tabSettings);
         UiStyler.StylePrimaryButton(btnApply);
         UiStyler.StyleSecondaryButton(btnShowPac);
         UiStyler.StyleDangerButton(btnDisable);
+        UiStyler.StylePrimaryButton(btnSave);
         UiStyler.StylePrimaryButton(btnStartProxy);
         UiStyler.StyleDangerButton(btnStopProxy);
         UiStyler.StyleSecondaryButton(btnOpenDataFolder);
@@ -141,6 +151,7 @@ public partial class Form1 : Form
         txtAddIp.KeyDown += (_, e) => { if (e.KeyCode == Keys.Enter) AddCustomIp(); };
         cmbAvailableLists.SelectedIndexChanged += (_, _) => AddSelectedList();
         btnOpenDataFolder.Click += (_, _) => OpenDataFolder();
+        btnSave.Click += (_, _) => SaveAppSettings();
         _domainListService.StatusChanged += (_, message) => SetStatus(message);
     }
 
@@ -172,10 +183,12 @@ public partial class Form1 : Form
         var menu = new ContextMenuStrip();
         menu.Items.Add("Открыть", null, (_, _) => ShowFromTray());
 
+        var trayProxyMenu = new ToolStripMenuItem("Прокси");
         _trayEnableItem = new ToolStripMenuItem("Включить", null, async (_, _) => await EnableFromTrayAsync());
         _trayDisableItem = new ToolStripMenuItem("Отключить", null, (_, _) => DisableProxy());
-        menu.Items.Add(_trayEnableItem);
-        menu.Items.Add(_trayDisableItem);
+        trayProxyMenu.DropDownItems.Add(_trayEnableItem);
+        trayProxyMenu.DropDownItems.Add(_trayDisableItem);
+        menu.Items.Add(trayProxyMenu);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Выход", null, (_, _) => ExitApplication());
 
@@ -209,6 +222,11 @@ public partial class Form1 : Form
             if (_settings.IsLocalProxyActive && !string.IsNullOrWhiteSpace(_settings.ProxyLink))
             {
                 await StartLocalProxyAsync(silent: true);
+            }
+
+            if (_settings.StartProxyWithApp && _settings.IsProxyActive)
+            {
+                await ApplyAsync(silent: true);
             }
         }
     }
@@ -256,12 +274,14 @@ public partial class Form1 : Form
         RefreshCustomDomainsPanel();
         RefreshCustomIpsPanel();
         chkStartWithWindows.Checked = _settings.StartWithWindows;
+        chkStartProxyWithApp.Checked = _settings.StartProxyWithApp;
+        chkNotifyOnMinimizeToTray.Checked = _settings.NotifyOnMinimizeToTray;
 
         txtProxyLink.Text = _settings.ProxyLink;
         txtLocalPort.Text = _settings.LocalProxyPort.ToString();
         UpdateLocalProxyUi();
 
-        if (_settings.IsProxyActive)
+        if (_settings.IsProxyActive && !_settings.StartProxyWithApp)
         {
             SetStatus("PAC был активен при прошлом запуске. Нажмите «Применить» для повторной активации.");
         }
@@ -556,7 +576,7 @@ public partial class Form1 : Form
         }
     }
 
-    private async Task ApplyAsync()
+    private async Task ApplyAsync(bool silent = false)
     {
         SetUiEnabled(false);
 
@@ -564,13 +584,22 @@ public partial class Form1 : Form
         {
             if (!InputParser.TryParsePort(cmbPacPort.Text, out var pacPort, out var pacPortError))
             {
-                MessageBox.Show(this, pacPortError, "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                if (!silent)
+                {
+                    MessageBox.Show(this, pacPortError, "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
+
                 return;
             }
 
-            var pac = await TryBuildPacContentAsync();
+            var pac = await TryBuildPacContentAsync(silent);
             if (pac == null)
             {
+                if (silent)
+                {
+                    SetStatus("Не удалось автоматически запустить PAC");
+                }
+
                 return;
             }
 
@@ -587,16 +616,24 @@ public partial class Form1 : Form
 
             SetStatus($"PAC активен: {pac.Value.DomainsCount} доменов, {pac.Value.SubnetsCount} подсетей");
             UpdateTrayMenuState();
-            MessageBox.Show(
-                this,
-                $"PAC-файл применён.\n\nАдрес: {pacUrl}\nДоменов: {pac.Value.DomainsCount}\nПодсетей: {pac.Value.SubnetsCount}",
-                "Готово",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
+
+            if (!silent)
+            {
+                MessageBox.Show(
+                    this,
+                    $"PAC-файл применён.\n\nАдрес: {pacUrl}\nДоменов: {pac.Value.DomainsCount}\nПодсетей: {pac.Value.SubnetsCount}",
+                    "Готово",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            }
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            if (!silent)
+            {
+                MessageBox.Show(this, ex.Message, "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+
             SetStatus("Ошибка применения PAC");
         }
         finally
@@ -611,22 +648,30 @@ public partial class Form1 : Form
         await ApplyAsync();
     }
 
-    private async Task<(string Content, string Hash, int DomainsCount, int SubnetsCount)?> TryBuildPacContentAsync()
+    private async Task<(string Content, string Hash, int DomainsCount, int SubnetsCount)?> TryBuildPacContentAsync(bool silent = false)
     {
         if (!InputParser.TryParseProxyAddress(cmbProxy.Text, out var host, out var port, out var error))
         {
-            MessageBox.Show(this, error, "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            if (!silent)
+            {
+                MessageBox.Show(this, error, "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+
             return null;
         }
 
         if (_selectedListIds.Count == 0 && _customDomains.Count == 0 && _customIps.Count == 0)
         {
-            MessageBox.Show(
-                this,
-                "Выберите хотя бы один список или укажите свои домены/IP.",
-                "Ошибка",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Warning);
+            if (!silent)
+            {
+                MessageBox.Show(
+                    this,
+                    "Выберите хотя бы один список или укажите свои домены/IP.",
+                    "Ошибка",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
+
             return null;
         }
 
@@ -641,12 +686,16 @@ public partial class Form1 : Form
 
         if (domains.Count == 0 && subnets.Count == 0)
         {
-            MessageBox.Show(
-                this,
-                "Не найдено доменов или IP для формирования PAC.",
-                "Ошибка",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Warning);
+            if (!silent)
+            {
+                MessageBox.Show(
+                    this,
+                    "Не найдено доменов или IP для формирования PAC.",
+                    "Ошибка",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
+
             return null;
         }
 
@@ -672,6 +721,28 @@ public partial class Form1 : Form
 
     private void SaveSettings(string? hash, bool isActive)
     {
+        UpdateTunnelingPreferences();
+        UpdateAppSettingsPreferences();
+        _settings.IsProxyActive = isActive;
+        _settings.ActivePacHash = hash;
+
+        if (InputParser.TryParsePort(txtLocalPort.Text, out var localPort, out _))
+        {
+            _settings.LocalProxyPort = localPort;
+        }
+
+        var proxyLink = txtProxyLink.Text.Trim();
+        if (!string.IsNullOrWhiteSpace(proxyLink))
+        {
+            _settings.ProxyLink = proxyLink;
+        }
+
+        _settings.IsLocalProxyActive = _localProxyService.IsRunning;
+        SettingsService.Save(_settings);
+    }
+
+    private void UpdateTunnelingPreferences()
+    {
         var address = cmbProxy.Text.Trim();
         if (!string.IsNullOrWhiteSpace(address))
         {
@@ -692,28 +763,33 @@ public partial class Form1 : Form
         _settings.SelectedListIds = _selectedListIds.ToList();
         _settings.CustomDomains = _customDomains.ToList();
         _settings.CustomIps = _customIps.ToList();
-        _settings.StartWithWindows = chkStartWithWindows.Checked;
-        _settings.IsProxyActive = isActive;
-        _settings.ActivePacHash = hash;
-
-        if (InputParser.TryParsePort(txtLocalPort.Text, out var localPort, out _))
-        {
-            _settings.LocalProxyPort = localPort;
-        }
-
-        var proxyLink = txtProxyLink.Text.Trim();
-        if (!string.IsNullOrWhiteSpace(proxyLink))
-        {
-            _settings.ProxyLink = proxyLink;
-        }
-
-        _settings.IsLocalProxyActive = _localProxyService.IsRunning;
-        SettingsService.Save(_settings);
     }
 
-    private void SaveUiSettings()
+    private void UpdateAppSettingsPreferences()
     {
-        SaveSettings(_settings.ActivePacHash, _settings.IsProxyActive);
+        _settings.StartWithWindows = chkStartWithWindows.Checked;
+        _settings.StartProxyWithApp = chkStartProxyWithApp.Checked;
+        _settings.NotifyOnMinimizeToTray = chkNotifyOnMinimizeToTray.Checked;
+    }
+
+    private void SaveAppSettings()
+    {
+        try
+        {
+            UpdateAppSettingsPreferences();
+            StartupService.SetEnabled(chkStartWithWindows.Checked);
+            SettingsService.Save(_settings);
+            SetStatus("Настройки сохранены");
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.Message, "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private void SaveUiStateOnMinimize()
+    {
+        UpdateTunnelingPreferences();
         SaveProxySettings(_localProxyService.IsRunning);
     }
 
@@ -767,14 +843,18 @@ public partial class Form1 : Form
         }
 
         e.Cancel = true;
-        SaveUiSettings();
+        SaveUiStateOnMinimize();
         Hide();
         _notifyIcon!.Visible = true;
-        _notifyIcon.ShowBalloonTip(
-            2000,
-            "Window PAC Tunneling",
-            "Приложение свёрнуто в трей.",
-            ToolTipIcon.Info);
+
+        if (chkNotifyOnMinimizeToTray.Checked)
+        {
+            _notifyIcon.ShowBalloonTip(
+                2000,
+                "Window PAC Tunneling",
+                "Приложение свёрнуто в трей.",
+                ToolTipIcon.Info);
+        }
     }
 
     private void ShowFromTray()

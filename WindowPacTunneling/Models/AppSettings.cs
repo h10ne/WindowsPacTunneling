@@ -26,6 +26,10 @@ public sealed class AppSettings
 
     public bool StartWithWindows { get; set; }
 
+    public bool StartProxyWithApp { get; set; }
+
+    public bool NotifyOnMinimizeToTray { get; set; } = true;
+
     public bool IsProxyActive { get; set; }
 
     public string? ActivePacHash { get; set; }

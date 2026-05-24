@@ -67,6 +67,11 @@ public static partial class SettingsService
                 settings.CustomIps = ParseLegacyQuotedList(legacyIps);
             }
         }
+
+        if (!root.TryGetProperty(nameof(AppSettings.NotifyOnMinimizeToTray), out _))
+        {
+            settings.NotifyOnMinimizeToTray = true;
+        }
     }
 
     private static List<string> ParseLegacyQuotedList(string input) =>

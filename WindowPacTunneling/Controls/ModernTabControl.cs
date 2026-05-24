@@ -16,9 +16,9 @@ public sealed class ModernTabControl : TabControl
             true);
         Appearance = TabAppearance.FlatButtons;
         DrawMode = TabDrawMode.OwnerDrawFixed;
-        SizeMode = TabSizeMode.Fixed;
-        ItemSize = new Size(148, 36);
-        Padding = new Point(16, 6);
+        SizeMode = TabSizeMode.FillToRight;
+        ItemSize = new Size(0, 36);
+        Padding = new Point(12, 8);
         Font = UiTheme.TabFont;
         BackColor = UiTheme.Surface;
     }
@@ -63,6 +63,12 @@ public sealed class ModernTabControl : TabControl
     protected override void OnSelectedIndexChanged(EventArgs e)
     {
         base.OnSelectedIndexChanged(e);
+        Invalidate();
+    }
+
+    protected override void OnResize(EventArgs e)
+    {
+        base.OnResize(e);
         Invalidate();
     }
 

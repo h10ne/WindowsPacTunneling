@@ -52,8 +52,11 @@ partial class Form1
         lblProxyState = new Label();
         btnStartProxy = new Button();
         btnStopProxy = new Button();
-        chkStartWithWindows = new CheckBox();
+        chkStartWithWindows = new DarkCheckBox();
+        chkStartProxyWithApp = new DarkCheckBox();
+        chkNotifyOnMinimizeToTray = new DarkCheckBox();
         btnOpenDataFolder = new Button();
+        btnSave = new Button();
         btnApply = new Button();
         btnShowPac = new Button();
         btnDisable = new Button();
@@ -70,9 +73,8 @@ partial class Form1
         tabMain.Controls.Add(tabSettings);
         tabMain.Dock = DockStyle.Fill;
         tabMain.Name = "tabMain";
-        tabMain.Padding = new Point(16, 6);
+        tabMain.Padding = new Point(12, 8);
         tabMain.SelectedIndex = 0;
-        tabMain.SizeMode = TabSizeMode.Fixed;
 
         tabTunneling.Name = "tabTunneling";
         tabTunneling.Text = "Тунелирование";
@@ -82,8 +84,6 @@ partial class Form1
         tabProxy.Text = "Прокси";
         tabProxy.UseVisualStyleBackColor = false;
 
-        tabSettings.Controls.Add(chkStartWithWindows);
-        tabSettings.Controls.Add(btnOpenDataFolder);
         tabSettings.Name = "tabSettings";
         tabSettings.Text = "Настройки";
         tabSettings.UseVisualStyleBackColor = false;
@@ -136,15 +136,14 @@ partial class Form1
         btnStopProxy.Text = "Остановить";
         chkStartWithWindows.Name = "chkStartWithWindows";
         chkStartWithWindows.Text = "Запускать вместе со стартом системы";
-        chkStartWithWindows.Location = new Point(12, 16);
-        chkStartWithWindows.AutoSize = true;
+        chkStartProxyWithApp.Name = "chkStartProxyWithApp";
+        chkStartProxyWithApp.Text = "Запускать прокси со стартом приложения";
+        chkNotifyOnMinimizeToTray.Name = "chkNotifyOnMinimizeToTray";
+        chkNotifyOnMinimizeToTray.Text = "Уведомлять при сворачивании приложения";
         btnOpenDataFolder.Name = "btnOpenDataFolder";
         btnOpenDataFolder.Text = "Открыть папку данных";
-        btnOpenDataFolder.Location = new Point(12, 52);
-        btnOpenDataFolder.AutoSize = true;
-        btnOpenDataFolder.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-        btnOpenDataFolder.MinimumSize = new Size(0, 32);
-        btnOpenDataFolder.Anchor = AnchorStyles.Top | AnchorStyles.Left;
+        btnSave.Name = "btnSave";
+        btnSave.Text = "Сохранить";
         btnApply.Name = "btnApply";
         btnApply.Text = "Применить";
         btnShowPac.Name = "btnShowPac";
@@ -201,7 +200,10 @@ partial class Form1
     private Button btnStartProxy;
     private Button btnStopProxy;
     private CheckBox chkStartWithWindows;
+    private CheckBox chkStartProxyWithApp;
+    private CheckBox chkNotifyOnMinimizeToTray;
     private Button btnOpenDataFolder;
+    private Button btnSave;
     private Button btnApply;
     private Button btnShowPac;
     private Button btnDisable;

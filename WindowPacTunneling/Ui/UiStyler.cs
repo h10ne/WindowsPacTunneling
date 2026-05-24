@@ -32,8 +32,11 @@ public static class UiStyler
     public static void StyleCheckBox(CheckBox checkBox)
     {
         checkBox.ForeColor = UiTheme.TextPrimary;
-        checkBox.BackColor = Color.Transparent;
+        checkBox.BackColor = UiTheme.TabActive;
+        checkBox.UseVisualStyleBackColor = false;
         checkBox.FlatStyle = FlatStyle.Flat;
+        checkBox.FlatAppearance.BorderColor = UiTheme.Border;
+        checkBox.FlatAppearance.CheckedBackColor = UiTheme.Accent;
     }
 
     public static void StylePrimaryButton(Button button)

@@ -9,7 +9,7 @@ public static class TunnelingLayout
     public static void Configure(TabPage tab, Control proxyRow, Label lblAvailableLists, ComboBox cmbAvailableLists,
         Label lblSelectedLists, Panel pnlSelectedLists, Label lblCustomDomains, Panel pnlCustomDomains,
         TextBox txtAddDomain, Button btnAddDomain, Label lblCustomIps, Panel pnlCustomIps,
-        TextBox txtAddIp, Button btnAddIp)
+        TextBox txtAddIp, Button btnAddIp, Button btnApply, Button btnShowPac, Button btnDisable)
     {
         tab.Controls.Clear();
 
@@ -17,7 +17,7 @@ public static class TunnelingLayout
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 11,
+            RowCount = 12,
             BackColor = UiTheme.TabActive,
             Padding = new Padding(0)
         };
@@ -33,6 +33,7 @@ public static class TunnelingLayout
         table.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         table.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
         table.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 50F));
 
         proxyRow.Dock = DockStyle.Fill;
         ConfigureCombo(cmbAvailableLists);
@@ -54,6 +55,7 @@ public static class TunnelingLayout
         table.Controls.Add(lblCustomIps, 0, 8);
         table.Controls.Add(pnlCustomIps, 0, 9);
         table.Controls.Add(addIpRow, 0, 10);
+        table.Controls.Add(CreateActionButtonsRow(btnApply, btnShowPac, btnDisable), 0, 11);
 
         foreach (Control control in new Control[]
                  {
@@ -112,12 +114,29 @@ public static class TunnelingLayout
         return wrapper;
     }
 
-    public static void ConfigureFooter(Panel footer, Button btnApply, Button btnShowPac, Button btnDisable, Label lblStatus)
+    public static void ConfigureStatusBar(Panel footer, Label lblStatus)
     {
         footer.Dock = DockStyle.Bottom;
-        footer.Height = 88;
-        footer.Padding = new Padding(0, 10, 0, 8);
+        footer.Height = 36;
+        footer.Padding = new Padding(0, 8, 0, 6);
         footer.BackColor = UiTheme.FormBackground;
+
+        lblStatus.Dock = DockStyle.Fill;
+        lblStatus.AutoSize = false;
+        lblStatus.TextAlign = ContentAlignment.MiddleLeft;
+
+        footer.Controls.Add(lblStatus);
+    }
+
+    private static Panel CreateActionButtonsRow(Button btnApply, Button btnShowPac, Button btnDisable)
+    {
+        var panel = new Panel
+        {
+            Dock = DockStyle.Fill,
+            MinimumSize = new Size(0, 46),
+            Margin = new Padding(0, 4, 0, 0),
+            BackColor = UiTheme.TabActive
+        };
 
         btnApply.Anchor = AnchorStyles.Top | AnchorStyles.Left;
         btnApply.Size = new Size(148, 38);
@@ -128,23 +147,19 @@ public static class TunnelingLayout
         btnDisable.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         btnDisable.Size = new Size(148, 38);
 
-        lblStatus.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-        lblStatus.AutoSize = false;
-        lblStatus.Height = 22;
-        lblStatus.TextAlign = ContentAlignment.MiddleLeft;
+        panel.Controls.AddRange([btnApply, btnShowPac, btnDisable]);
+        panel.Resize += (_, _) => LayoutActionButtons(panel, btnApply, btnShowPac, btnDisable);
+        LayoutActionButtons(panel, btnApply, btnShowPac, btnDisable);
 
-        footer.Controls.AddRange([btnApply, btnShowPac, btnDisable, lblStatus]);
-        footer.Resize += (_, _) => LayoutFooter(footer, btnApply, btnShowPac, btnDisable, lblStatus);
+        return panel;
     }
 
-    public static void LayoutFooter(Panel footer, Button btnApply, Button btnShowPac, Button btnDisable, Label lblStatus)
+    private static void LayoutActionButtons(Panel panel, Button btnApply, Button btnShowPac, Button btnDisable)
     {
-        var client = footer.ClientSize;
-        btnApply.Location = new Point(0, 4);
-        btnDisable.Location = new Point(client.Width - btnDisable.Width, 4);
-        btnShowPac.Location = new Point((client.Width - btnShowPac.Width) / 2, 4);
-        lblStatus.Location = new Point(0, client.Height - lblStatus.Height - 2);
-        lblStatus.Width = client.Width;
+        var client = panel.ClientSize;
+        btnApply.Location = new Point(0, 0);
+        btnDisable.Location = new Point(client.Width - btnDisable.Width, 0);
+        btnShowPac.Location = new Point((client.Width - btnShowPac.Width) / 2, 0);
     }
 
     private static Panel CreateAddRow(TextBox textBox, Button addButton)
