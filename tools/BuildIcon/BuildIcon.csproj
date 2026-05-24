@@ -9,7 +9,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <Compile Include="..\..\WindowPacTunneling\Resources\AppIconBuilder.cs" Link="AppIconBuilder.cs" />
+        <Compile Include="..\..\WPT.WinForms\Resources\AppIconBuilder.cs" Link="AppIconBuilder.cs" />
     </ItemGroup>
 
 </Project>
