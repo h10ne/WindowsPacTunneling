@@ -317,6 +317,7 @@
                                 <Condition Property="SelectedItem" Value="{x:Null}" />
                             </MultiTrigger.Conditions>
                             <Setter TargetName="HintText" Property="Visibility" Value="Visible" />
+                            <Setter TargetName="ContentSite" Property="Visibility" Value="Collapsed" />
                         </MultiTrigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>

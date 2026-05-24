@@ -450,19 +450,30 @@ public sealed class MainViewModel : ViewModelBase
 
     private void AddSelectedList()
     {
-        if (SelectedListToAdd == null)
+        if (_selectedListToAdd == null)
         {
             return;
         }
 
-        if (!_selectedListIds.Add(SelectedListToAdd.Id))
+        var list = _selectedListToAdd;
+        ResetSelectedListToAdd();
+
+        if (!_selectedListIds.Add(list.Id))
         {
-            SelectedListToAdd = null;
             return;
         }
 
-        SelectedLists.Add(new ListChipItem(SelectedListToAdd.Id, SelectedListToAdd.DisplayName));
-        SelectedListToAdd = null;
+        SelectedLists.Add(new ListChipItem(list.Id, list.DisplayName));
+    }
+
+    private void ResetSelectedListToAdd()
+    {
+        if (_selectedListToAdd == null)
+        {
+            return;
+        }
+
+        _selectedListToAdd = null;
         OnPropertyChanged(nameof(SelectedListToAdd));
     }
 
@@ -834,6 +845,11 @@ public sealed class MainViewModel : ViewModelBase
             StartupService.SetEnabled(StartWithWindows);
             SettingsService.Save(_settings);
             StatusMessage = "Настройки сохранены";
+            MessageBox.Show(
+                "Настройки сохранены.",
+                "Готово",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
