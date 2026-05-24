@@ -80,8 +80,10 @@ public partial class Form1 : Form
             chkStartWithWindows,
             chkStartProxyWithApp,
             chkNotifyOnMinimizeToTray,
-            btnOpenDataFolder,
-            btnSave);
+            chkUpdateListsOnStartup,
+            btnUpdateLists,
+            btnSave,
+            btnOpenDataFolder);
 
         TunnelingLayout.ConfigureStatusBar(pnlFooter, lblStatus);
 
@@ -121,6 +123,7 @@ public partial class Form1 : Form
         UiStyler.StyleSecondaryButton(btnShowPac);
         UiStyler.StyleDangerButton(btnDisable);
         UiStyler.StylePrimaryButton(btnSave);
+        UiStyler.StyleSecondaryButton(btnUpdateLists);
         UiStyler.StylePrimaryButton(btnStartProxy);
         UiStyler.StyleDangerButton(btnStopProxy);
         UiStyler.StyleSecondaryButton(btnOpenDataFolder);
@@ -151,6 +154,7 @@ public partial class Form1 : Form
         txtAddIp.KeyDown += (_, e) => { if (e.KeyCode == Keys.Enter) AddCustomIp(); };
         cmbAvailableLists.SelectedIndexChanged += (_, _) => AddSelectedList();
         btnOpenDataFolder.Click += (_, _) => OpenDataFolder();
+        btnUpdateLists.Click += async (_, _) => await UpdateListsAsync();
         btnSave.Click += (_, _) => SaveAppSettings();
         _domainListService.StatusChanged += (_, message) => SetStatus(message);
     }
@@ -201,32 +205,53 @@ public partial class Form1 : Form
         NativeTheme.ApplyDarkTitleBar(this);
         SetUiEnabled(false);
 
+        if (_settings.UpdateListsOnStartup)
+        {
+            await UpdateListsAsync(showWarningOnError: true, reEnableUi: false);
+        }
+
+        SetUiEnabled(true);
+        SetStatus("Готово");
+
+        if (_settings.IsLocalProxyActive && !string.IsNullOrWhiteSpace(_settings.ProxyLink))
+        {
+            await StartLocalProxyAsync(silent: true);
+        }
+
+        if (_settings.StartProxyWithApp && _settings.IsProxyActive)
+        {
+            await ApplyAsync(silent: true);
+        }
+    }
+
+    private async Task UpdateListsAsync(bool showWarningOnError = true, bool reEnableUi = true)
+    {
+        if (reEnableUi)
+        {
+            SetUiEnabled(false);
+        }
+
         try
         {
             await _domainListService.UpdateAllListsAsync();
         }
         catch (Exception ex)
         {
-            MessageBox.Show(
-                this,
-                $"Не удалось обновить списки: {ex.Message}\nБудут использованы локальные копии, если они есть.",
-                "Предупреждение",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Warning);
+            if (showWarningOnError)
+            {
+                MessageBox.Show(
+                    this,
+                    $"Не удалось обновить списки: {ex.Message}\nБудут использованы локальные копии, если они есть.",
+                    "Предупреждение",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
         }
         finally
         {
-            SetUiEnabled(true);
-            SetStatus("Готово");
-
-            if (_settings.IsLocalProxyActive && !string.IsNullOrWhiteSpace(_settings.ProxyLink))
+            if (reEnableUi)
             {
-                await StartLocalProxyAsync(silent: true);
-            }
-
-            if (_settings.StartProxyWithApp && _settings.IsProxyActive)
-            {
-                await ApplyAsync(silent: true);
+                SetUiEnabled(true);
             }
         }
     }
@@ -276,6 +301,7 @@ public partial class Form1 : Form
         chkStartWithWindows.Checked = _settings.StartWithWindows;
         chkStartProxyWithApp.Checked = _settings.StartProxyWithApp;
         chkNotifyOnMinimizeToTray.Checked = _settings.NotifyOnMinimizeToTray;
+        chkUpdateListsOnStartup.Checked = _settings.UpdateListsOnStartup;
 
         txtProxyLink.Text = _settings.ProxyLink;
         txtLocalPort.Text = _settings.LocalProxyPort.ToString();
@@ -770,6 +796,7 @@ public partial class Form1 : Form
         _settings.StartWithWindows = chkStartWithWindows.Checked;
         _settings.StartProxyWithApp = chkStartProxyWithApp.Checked;
         _settings.NotifyOnMinimizeToTray = chkNotifyOnMinimizeToTray.Checked;
+        _settings.UpdateListsOnStartup = chkUpdateListsOnStartup.Checked;
     }
 
     private void SaveAppSettings()

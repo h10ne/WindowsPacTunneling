@@ -55,6 +55,8 @@ partial class Form1
         chkStartWithWindows = new DarkCheckBox();
         chkStartProxyWithApp = new DarkCheckBox();
         chkNotifyOnMinimizeToTray = new DarkCheckBox();
+        chkUpdateListsOnStartup = new DarkCheckBox();
+        btnUpdateLists = new Button();
         btnOpenDataFolder = new Button();
         btnSave = new Button();
         btnApply = new Button();
@@ -140,6 +142,10 @@ partial class Form1
         chkStartProxyWithApp.Text = "Запускать прокси со стартом приложения";
         chkNotifyOnMinimizeToTray.Name = "chkNotifyOnMinimizeToTray";
         chkNotifyOnMinimizeToTray.Text = "Уведомлять при сворачивании приложения";
+        chkUpdateListsOnStartup.Name = "chkUpdateListsOnStartup";
+        chkUpdateListsOnStartup.Text = "Обновлять списки при запуске приложения";
+        btnUpdateLists.Name = "btnUpdateLists";
+        btnUpdateLists.Text = "Обновить списки";
         btnOpenDataFolder.Name = "btnOpenDataFolder";
         btnOpenDataFolder.Text = "Открыть папку данных";
         btnSave.Name = "btnSave";
@@ -202,6 +208,8 @@ partial class Form1
     private CheckBox chkStartWithWindows;
     private CheckBox chkStartProxyWithApp;
     private CheckBox chkNotifyOnMinimizeToTray;
+    private CheckBox chkUpdateListsOnStartup;
+    private Button btnUpdateLists;
     private Button btnOpenDataFolder;
     private Button btnSave;
     private Button btnApply;

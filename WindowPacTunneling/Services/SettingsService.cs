@@ -72,6 +72,11 @@ public static partial class SettingsService
         {
             settings.NotifyOnMinimizeToTray = true;
         }
+
+        if (!root.TryGetProperty(nameof(AppSettings.UpdateListsOnStartup), out _))
+        {
+            settings.UpdateListsOnStartup = true;
+        }
     }
 
     private static List<string> ParseLegacyQuotedList(string input) =>
