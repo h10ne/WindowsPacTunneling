@@ -11,9 +11,14 @@ public static class AppPaths
 
     public static string PacFile => Path.Combine(Root, "proxy.pac");
 
+    public static string BinDirectory => Path.Combine(Root, "bin");
+
+    public static string SingBoxConfigFile => Path.Combine(Root, "sing-box.json");
+
     public static void EnsureRoot()
     {
         Directory.CreateDirectory(Root);
         Directory.CreateDirectory(ListsDirectory);
+        Directory.CreateDirectory(BinDirectory);
     }
 }

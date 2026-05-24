@@ -10,6 +10,7 @@ public partial class Form1 : Form
 {
     private readonly DomainListService _domainListService = new();
     private readonly PacHttpServer _pacHttpServer = new();
+    private readonly LocalProxyService _localProxyService = new();
     private readonly AppSettings _settings = SettingsService.Load();
     private readonly HashSet<string> _selectedListIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<string> _customDomains = [];
@@ -60,6 +61,17 @@ public partial class Form1 : Form
             txtAddIp,
             btnAddIp);
 
+        ProxyLayout.Configure(
+            tabProxy,
+            lblProxyLink,
+            txtProxyLink,
+            lblLocalPort,
+            txtLocalPort,
+            lblProxyHint,
+            lblProxyState,
+            btnStartProxy,
+            btnStopProxy);
+
         TunnelingLayout.ConfigureFooter(pnlFooter, btnApply, btnShowPac, btnDisable, lblStatus);
         TunnelingLayout.LayoutFooter(pnlFooter, btnApply, btnShowPac, btnDisable, lblStatus);
 
@@ -81,17 +93,26 @@ public partial class Form1 : Form
         UiStyler.StyleLabel(lblSelectedLists);
         UiStyler.StyleLabel(lblCustomDomains);
         UiStyler.StyleLabel(lblCustomIps);
+        UiStyler.StyleLabel(lblProxyLink);
+        UiStyler.StyleLabel(lblLocalPort);
+        UiStyler.StyleLabel(lblProxyHint, secondary: true);
+        UiStyler.StyleLabel(lblProxyState, secondary: true);
         UiStyler.StyleComboBox(cmbProxy);
         UiStyler.StyleComboBox(cmbPacPort);
         UiStyler.StyleComboBox(cmbAvailableLists);
         UiStyler.StyleTextBox(txtAddDomain);
         UiStyler.StyleTextBox(txtAddIp);
+        UiStyler.StyleTextBox(txtProxyLink);
+        UiStyler.StyleTextBox(txtLocalPort);
         UiStyler.StyleCheckBox(chkStartWithWindows);
         UiStyler.StyleTabPage(tabTunneling);
+        UiStyler.StyleTabPage(tabProxy);
         UiStyler.StyleTabPage(tabSettings);
         UiStyler.StylePrimaryButton(btnApply);
         UiStyler.StyleSecondaryButton(btnShowPac);
         UiStyler.StyleDangerButton(btnDisable);
+        UiStyler.StylePrimaryButton(btnStartProxy);
+        UiStyler.StyleDangerButton(btnStopProxy);
         UiStyler.StyleSecondaryButton(btnOpenDataFolder);
         UiStyler.StyleAccentIconButton(btnAddDomain);
         UiStyler.StyleAccentIconButton(btnAddIp);
@@ -114,6 +135,8 @@ public partial class Form1 : Form
         btnDisable.Click += (_, _) => DisableProxy();
         btnAddDomain.Click += (_, _) => AddCustomDomain();
         btnAddIp.Click += (_, _) => AddCustomIp();
+        btnStartProxy.Click += async (_, _) => await StartLocalProxyAsync();
+        btnStopProxy.Click += (_, _) => StopLocalProxy();
         txtAddDomain.KeyDown += (_, e) => { if (e.KeyCode == Keys.Enter) AddCustomDomain(); };
         txtAddIp.KeyDown += (_, e) => { if (e.KeyCode == Keys.Enter) AddCustomIp(); };
         cmbAvailableLists.SelectedIndexChanged += (_, _) => AddSelectedList();
@@ -182,6 +205,11 @@ public partial class Form1 : Form
         {
             SetUiEnabled(true);
             SetStatus("Готово");
+
+            if (_settings.IsLocalProxyActive && !string.IsNullOrWhiteSpace(_settings.ProxyLink))
+            {
+                await StartLocalProxyAsync(silent: true);
+            }
         }
     }
 
@@ -228,6 +256,10 @@ public partial class Form1 : Form
         RefreshCustomDomainsPanel();
         RefreshCustomIpsPanel();
         chkStartWithWindows.Checked = _settings.StartWithWindows;
+
+        txtProxyLink.Text = _settings.ProxyLink;
+        txtLocalPort.Text = _settings.LocalProxyPort.ToString();
+        UpdateLocalProxyUi();
 
         if (_settings.IsProxyActive)
         {
@@ -355,6 +387,138 @@ public partial class Form1 : Form
 
     private static bool ContainsIgnoreCase(IEnumerable<string> items, string value) =>
         items.Any(x => x.Equals(value, StringComparison.OrdinalIgnoreCase));
+
+    private async Task StartLocalProxyAsync(bool silent = false)
+    {
+        if (_localProxyService.IsRunning)
+        {
+            return;
+        }
+
+        if (!ProxyLinkParser.TryParse(txtProxyLink.Text, out var profile, out var parseError))
+        {
+            if (!silent)
+            {
+                MessageBox.Show(this, parseError, "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+
+            return;
+        }
+
+        if (!InputParser.TryParsePort(txtLocalPort.Text, out var localPort, out var portError))
+        {
+            if (!silent)
+            {
+                MessageBox.Show(this, portError, "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+
+            return;
+        }
+
+        SetProxyUiEnabled(false);
+
+        try
+        {
+            var progress = new Progress<string>(message => SetProxyState(message));
+            await _localProxyService.StartAsync(profile, localPort, progress, CancellationToken.None);
+
+            SyncTunnelingProxyAddress(_localProxyService.LocalProxyAddress);
+            SaveProxySettings(isActive: true);
+            UpdateLocalProxyUi();
+            SetProxyState($"Прокси запущен: {_localProxyService.LocalProxyAddress}");
+
+            if (!silent)
+            {
+                SetStatus($"Локальный прокси: {_localProxyService.LocalProxyAddress}");
+            }
+        }
+        catch (Exception ex)
+        {
+            UpdateLocalProxyUi();
+            SetProxyState("Прокси остановлен");
+
+            if (!silent)
+            {
+                MessageBox.Show(this, ex.Message, "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+        finally
+        {
+            SetProxyUiEnabled(true);
+        }
+    }
+
+    private void StopLocalProxy()
+    {
+        _localProxyService.Stop();
+        SaveProxySettings(isActive: false);
+        UpdateLocalProxyUi();
+        SetProxyState("Прокси остановлен");
+        SetStatus("Локальный прокси остановлен");
+    }
+
+    private void SyncTunnelingProxyAddress(string address)
+    {
+        if (!cmbProxy.Items.Contains(address))
+        {
+            cmbProxy.Items.Insert(0, address);
+        }
+
+        cmbProxy.Text = address;
+    }
+
+    private void UpdateLocalProxyUi()
+    {
+        var isRunning = _localProxyService.IsRunning;
+        btnStartProxy.Enabled = !isRunning;
+        btnStopProxy.Enabled = isRunning;
+        txtProxyLink.Enabled = !isRunning;
+        txtLocalPort.Enabled = !isRunning;
+
+        if (isRunning)
+        {
+            SetProxyState($"Прокси запущен: {_localProxyService.LocalProxyAddress}");
+        }
+    }
+
+    private void SaveProxySettings(bool isActive)
+    {
+        var link = txtProxyLink.Text.Trim();
+        if (!string.IsNullOrWhiteSpace(link))
+        {
+            _settings.ProxyLink = link;
+            _settings.ProxyLinkHistory.RemoveAll(x => x.Equals(link, StringComparison.OrdinalIgnoreCase));
+            _settings.ProxyLinkHistory.Insert(0, link);
+            _settings.ProxyLinkHistory = _settings.ProxyLinkHistory.Take(10).ToList();
+        }
+
+        if (InputParser.TryParsePort(txtLocalPort.Text, out var localPort, out _))
+        {
+            _settings.LocalProxyPort = localPort;
+        }
+
+        _settings.IsLocalProxyActive = isActive;
+        SettingsService.Save(_settings);
+    }
+
+    private void SetProxyState(string message)
+    {
+        if (InvokeRequired)
+        {
+            BeginInvoke(() => lblProxyState.Text = message);
+            return;
+        }
+
+        lblProxyState.Text = message;
+    }
+
+    private void SetProxyUiEnabled(bool enabled)
+    {
+        btnStartProxy.Enabled = enabled && !_localProxyService.IsRunning;
+        btnStopProxy.Enabled = enabled && _localProxyService.IsRunning;
+        txtProxyLink.Enabled = enabled && !_localProxyService.IsRunning;
+        txtLocalPort.Enabled = enabled && !_localProxyService.IsRunning;
+    }
 
     private async Task ShowPacAsync()
     {
@@ -531,12 +695,26 @@ public partial class Form1 : Form
         _settings.StartWithWindows = chkStartWithWindows.Checked;
         _settings.IsProxyActive = isActive;
         _settings.ActivePacHash = hash;
+
+        if (InputParser.TryParsePort(txtLocalPort.Text, out var localPort, out _))
+        {
+            _settings.LocalProxyPort = localPort;
+        }
+
+        var proxyLink = txtProxyLink.Text.Trim();
+        if (!string.IsNullOrWhiteSpace(proxyLink))
+        {
+            _settings.ProxyLink = proxyLink;
+        }
+
+        _settings.IsLocalProxyActive = _localProxyService.IsRunning;
         SettingsService.Save(_settings);
     }
 
     private void SaveUiSettings()
     {
         SaveSettings(_settings.ActivePacHash, _settings.IsProxyActive);
+        SaveProxySettings(_localProxyService.IsRunning);
     }
 
     private void OpenDataFolder()
@@ -567,6 +745,7 @@ public partial class Form1 : Form
         btnApply.Enabled = enabled;
         btnShowPac.Enabled = enabled;
         btnDisable.Enabled = enabled;
+        UpdateLocalProxyUi();
     }
 
     private void SetStatus(string message)
@@ -612,7 +791,9 @@ public partial class Form1 : Form
         {
             WindowsProxySettings.DisablePac();
             _pacHttpServer.Stop();
+            _localProxyService.Stop();
             SaveSettings(null, isActive: false);
+            SaveProxySettings(isActive: false);
         }
         catch
         {

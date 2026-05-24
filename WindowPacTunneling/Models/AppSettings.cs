@@ -6,6 +6,14 @@ public sealed class AppSettings
 
     public List<string> ProxyHistory { get; set; } = ["127.0.0.1:10808"];
 
+    public string ProxyLink { get; set; } = string.Empty;
+
+    public List<string> ProxyLinkHistory { get; set; } = [];
+
+    public int LocalProxyPort { get; set; } = 10808;
+
+    public bool IsLocalProxyActive { get; set; }
+
     public int PacPort { get; set; } = 1080;
 
     public List<int> PacPortHistory { get; set; } = [1080];

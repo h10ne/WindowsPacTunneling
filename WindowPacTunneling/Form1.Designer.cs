@@ -15,6 +15,7 @@ partial class Form1
             _dailyUpdateTimer?.Dispose();
             _domainListService?.Dispose();
             _pacHttpServer?.Dispose();
+            _localProxyService?.Dispose();
         }
 
         base.Dispose(disposing);
@@ -25,6 +26,7 @@ partial class Form1
         pnlFooter = new Panel();
         tabMain = new ModernTabControl();
         tabTunneling = new TabPage();
+        tabProxy = new TabPage();
         tabSettings = new TabPage();
         lblProxy = new Label();
         cmbProxy = new ComboBox();
@@ -42,6 +44,14 @@ partial class Form1
         pnlCustomIps = new Panel();
         txtAddIp = new TextBox();
         btnAddIp = new Button();
+        lblProxyLink = new Label();
+        txtProxyLink = new TextBox();
+        lblLocalPort = new Label();
+        txtLocalPort = new TextBox();
+        lblProxyHint = new Label();
+        lblProxyState = new Label();
+        btnStartProxy = new Button();
+        btnStopProxy = new Button();
         chkStartWithWindows = new CheckBox();
         btnOpenDataFolder = new Button();
         btnApply = new Button();
@@ -56,6 +66,7 @@ partial class Form1
         pnlFooter.Name = "pnlFooter";
 
         tabMain.Controls.Add(tabTunneling);
+        tabMain.Controls.Add(tabProxy);
         tabMain.Controls.Add(tabSettings);
         tabMain.Dock = DockStyle.Fill;
         tabMain.Name = "tabMain";
@@ -66,6 +77,10 @@ partial class Form1
         tabTunneling.Name = "tabTunneling";
         tabTunneling.Text = "Тунелирование";
         tabTunneling.UseVisualStyleBackColor = false;
+
+        tabProxy.Name = "tabProxy";
+        tabProxy.Text = "Прокси";
+        tabProxy.UseVisualStyleBackColor = false;
 
         tabSettings.Controls.Add(chkStartWithWindows);
         tabSettings.Controls.Add(btnOpenDataFolder);
@@ -104,6 +119,21 @@ partial class Form1
         txtAddIp.PlaceholderText = "1.2.3.4 или 10.0.0.0/8";
         btnAddIp.Name = "btnAddIp";
         btnAddIp.Text = "+";
+        lblProxyLink.Name = "lblProxyLink";
+        lblProxyLink.Text = "Ссылка на прокси";
+        txtProxyLink.Name = "txtProxyLink";
+        lblLocalPort.Name = "lblLocalPort";
+        lblLocalPort.Text = "Локальный порт";
+        txtLocalPort.Name = "txtLocalPort";
+        txtLocalPort.Text = "10808";
+        lblProxyHint.Name = "lblProxyHint";
+        lblProxyHint.Text = "Локальный прокси не меняет системные настройки. Адрес 127.0.0.1:порт укажите на вкладке «Тунелирование» и настройте PAC.";
+        lblProxyState.Name = "lblProxyState";
+        lblProxyState.Text = "Прокси остановлен";
+        btnStartProxy.Name = "btnStartProxy";
+        btnStartProxy.Text = "Запустить";
+        btnStopProxy.Name = "btnStopProxy";
+        btnStopProxy.Text = "Остановить";
         chkStartWithWindows.Name = "chkStartWithWindows";
         chkStartWithWindows.Text = "Запускать вместе со стартом системы";
         chkStartWithWindows.Location = new Point(12, 16);
@@ -144,6 +174,7 @@ partial class Form1
     private Panel pnlFooter;
     private ModernTabControl tabMain;
     private TabPage tabTunneling;
+    private TabPage tabProxy;
     private TabPage tabSettings;
     private Label lblProxy;
     private ComboBox cmbProxy;
@@ -161,6 +192,14 @@ partial class Form1
     private Panel pnlCustomIps;
     private TextBox txtAddIp;
     private Button btnAddIp;
+    private Label lblProxyLink;
+    private TextBox txtProxyLink;
+    private Label lblLocalPort;
+    private TextBox txtLocalPort;
+    private Label lblProxyHint;
+    private Label lblProxyState;
+    private Button btnStartProxy;
+    private Button btnStopProxy;
     private CheckBox chkStartWithWindows;
     private Button btnOpenDataFolder;
     private Button btnApply;
