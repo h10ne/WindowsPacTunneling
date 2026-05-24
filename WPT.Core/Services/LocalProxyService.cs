@@ -15,14 +15,25 @@ public sealed class LocalProxyService : IDisposable
         {
             lock (_sync)
             {
-                return _process is { HasExited: false };
+                if (_process is { HasExited: false })
+                {
+                    return true;
+                }
             }
+
+            return LocalPort > 0 && IsPortListening(LocalPort) && HasManagedSingBoxProcess();
         }
     }
 
     public int LocalPort { get; private set; }
 
-    public string LocalProxyAddress => $"127.0.0.1:{LocalPort}";
+    public string LocalProxyAddress => LocalPort > 0 ? $"127.0.0.1:{LocalPort}" : "127.0.0.1:0";
+
+    public void Prepare(int localPort)
+    {
+        LocalPort = localPort;
+        TryAdoptFromPidFile();
+    }
 
     public async Task StartAsync(
         ProxyProfile profile,
@@ -83,11 +94,19 @@ public sealed class LocalProxyService : IDisposable
             LocalPort = localPort;
         }
 
+        WritePidFile(process.Id);
+
         progress?.Report("Ожидание локального прокси...");
         if (!await WaitForPortAsync(localPort, process, cancellationToken))
         {
             Stop();
             throw new InvalidOperationException($"Локальный прокси не ответил на порту {localPort}.");
+        }
+
+        if (process.HasExited)
+        {
+            Stop();
+            throw new InvalidOperationException("sing-box завершился сразу после запуска.");
         }
     }
 
@@ -98,14 +117,133 @@ public sealed class LocalProxyService : IDisposable
         {
             process = _process;
             _process = null;
-            LocalPort = 0;
         }
 
-        if (process == null)
+        if (process != null)
+        {
+            TryKillProcess(process);
+        }
+
+        KillManagedSingBoxProcesses();
+        ClearPidFile();
+    }
+
+    public void Dispose() => Stop();
+
+    public static bool IsPortListening(int port)
+    {
+        if (port is < 1 or > 65535)
+        {
+            return false;
+        }
+
+        try
+        {
+            using var client = new TcpClient();
+            var connectTask = client.ConnectAsync("127.0.0.1", port);
+            return connectTask.Wait(300) && client.Connected;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private void TryAdoptFromPidFile()
+    {
+        if (!File.Exists(AppPaths.SingBoxPidFile))
         {
             return;
         }
 
+        if (!int.TryParse(File.ReadAllText(AppPaths.SingBoxPidFile).Trim(), out var pid))
+        {
+            ClearPidFile();
+            return;
+        }
+
+        try
+        {
+            var process = Process.GetProcessById(pid);
+            if (process.HasExited || !IsManagedProcess(process))
+            {
+                process.Dispose();
+                ClearPidFile();
+                return;
+            }
+
+            lock (_sync)
+            {
+                _process?.Dispose();
+                _process = process;
+            }
+        }
+        catch
+        {
+            ClearPidFile();
+        }
+    }
+
+    private bool HasManagedSingBoxProcess()
+    {
+        foreach (var process in EnumerateManagedSingBoxProcesses())
+        {
+            process.Dispose();
+            return true;
+        }
+
+        return false;
+    }
+
+    private void KillManagedSingBoxProcesses()
+    {
+        foreach (var process in EnumerateManagedSingBoxProcesses())
+        {
+            TryKillProcess(process);
+            process.Dispose();
+        }
+    }
+
+    private IEnumerable<Process> EnumerateManagedSingBoxProcesses()
+    {
+        Process[] processes;
+        try
+        {
+            processes = Process.GetProcessesByName("sing-box");
+        }
+        catch
+        {
+            yield break;
+        }
+
+        foreach (var process in processes)
+        {
+            if (IsManagedProcess(process))
+            {
+                yield return process;
+            }
+            else
+            {
+                process.Dispose();
+            }
+        }
+    }
+
+    private bool IsManagedProcess(Process process)
+    {
+        try
+        {
+            var executable = ResolveExecutablePath();
+            return process.MainModule?.FileName.Equals(executable, StringComparison.OrdinalIgnoreCase) == true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static void TryKillProcess(Process process)
+    {
         try
         {
             if (!process.HasExited)
@@ -123,7 +261,19 @@ public sealed class LocalProxyService : IDisposable
         }
     }
 
-    public void Dispose() => Stop();
+    private static void WritePidFile(int pid)
+    {
+        AppPaths.EnsureRoot();
+        File.WriteAllText(AppPaths.SingBoxPidFile, pid.ToString());
+    }
+
+    private static void ClearPidFile()
+    {
+        if (File.Exists(AppPaths.SingBoxPidFile))
+        {
+            File.Delete(AppPaths.SingBoxPidFile);
+        }
+    }
 
     private static string ResolveExecutablePath()
     {
@@ -142,18 +292,9 @@ public sealed class LocalProxyService : IDisposable
                 return false;
             }
 
-            try
+            if (IsPortListening(port))
             {
-                using var client = new TcpClient();
-                var connectTask = client.ConnectAsync("127.0.0.1", port, cancellationToken).AsTask();
-                if (await Task.WhenAny(connectTask, Task.Delay(200, cancellationToken)) == connectTask
-                    && client.Connected)
-                {
-                    return true;
-                }
-            }
-            catch
-            {
+                return true;
             }
 
             await Task.Delay(200, cancellationToken);

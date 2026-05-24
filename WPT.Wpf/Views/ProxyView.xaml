@@ -1,0 +1,115 @@
+<UserControl x:Class="WPT.Wpf.Views.ProxyView"
+
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+
+             xmlns:ctrl="clr-namespace:WPT.Wpf.Controls"
+
+             MinWidth="480"
+
+             HorizontalAlignment="Stretch"
+
+             HorizontalContentAlignment="Stretch">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+
+        <StackPanel HorizontalAlignment="Stretch">
+
+
+
+            <TextBlock Text="Ссылка на прокси" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
+
+            <TextBox Text="{Binding ProxyLink, UpdateSourceTrigger=PropertyChanged}"
+
+                     Style="{StaticResource MultilineTextBox}"
+
+                     Height="88" VerticalScrollBarVisibility="Auto" Margin="0,0,0,16"
+
+                     ctrl:HintProperties.Hint="vless://uuid@server:443?security=reality&amp;type=tcp#remark" />
+
+
+
+            <TextBlock Text="Локальный порт" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
+
+            <TextBox Text="{Binding LocalPort, UpdateSourceTrigger=PropertyChanged}" Width="100" HorizontalAlignment="Left"
+
+                     IsEnabled="{Binding IsProxyEditingEnabled}" Margin="0,0,0,8"
+
+                     ctrl:HintProperties.Hint="10808" />
+
+
+
+            <Border Style="{StaticResource InfoBar}">
+
+                <TextBlock TextWrapping="Wrap" Foreground="{StaticResource TextPrimaryBrush}" FontSize="12"
+
+                           Text="Локальный прокси не меняет системные настройки. Укажите 127.0.0.1:порт на вкладке «Тунелирование»." />
+
+            </Border>
+
+
+
+            <StackPanel Orientation="Horizontal" Margin="0,16,0,12">
+
+                <Ellipse Width="8" Height="8" VerticalAlignment="Center" Margin="0,0,8,0">
+
+                    <Ellipse.Style>
+
+                        <Style TargetType="Ellipse">
+
+                            <Setter Property="Fill" Value="#FF6B6B6E" />
+
+                            <Style.Triggers>
+
+                                <DataTrigger Binding="{Binding IsProxyRunning}" Value="True">
+
+                                    <Setter Property="Fill" Value="{StaticResource SuccessBrush}" />
+
+                                </DataTrigger>
+
+                            </Style.Triggers>
+
+                        </Style>
+
+                    </Ellipse.Style>
+
+                </Ellipse>
+
+                <TextBlock Text="{Binding FooterProxyStatus}" Style="{StaticResource CaptionText}" VerticalAlignment="Center" />
+
+            </StackPanel>
+
+
+
+            <Button Content="{Binding ProxyToggleLabel}" Command="{Binding ToggleProxyCommand}" HorizontalAlignment="Left" MinWidth="140">
+
+                <Button.Style>
+
+                    <Style TargetType="Button" BasedOn="{StaticResource PrimaryButton}">
+
+                        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+
+                        <Style.Triggers>
+
+                            <DataTrigger Binding="{Binding IsProxyRunning}" Value="True">
+
+                                <Setter Property="Background" Value="{StaticResource DangerBrush}" />
+
+                            </DataTrigger>
+
+                        </Style.Triggers>
+
+                    </Style>
+
+                </Button.Style>
+
+            </Button>
+
+
+
+        </StackPanel>
+
+    </ScrollViewer>
+
+</UserControl>

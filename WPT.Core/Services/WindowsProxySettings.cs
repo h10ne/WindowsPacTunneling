@@ -39,8 +39,14 @@ public static class WindowsProxySettings
         using var key = Registry.CurrentUser.OpenSubKey(
             @"Software\Microsoft\Windows\CurrentVersion\Internet Settings");
 
-        pacUrl = key?.GetValue("AutoConfigURL") as string;
-        return !string.IsNullOrWhiteSpace(pacUrl);
+        var raw = key?.GetValue("AutoConfigURL");
+        pacUrl = raw switch
+        {
+            string value when !string.IsNullOrWhiteSpace(value) => value.Trim(),
+            _ => null
+        };
+
+        return pacUrl != null;
     }
 
     private static void NotifyChanges()

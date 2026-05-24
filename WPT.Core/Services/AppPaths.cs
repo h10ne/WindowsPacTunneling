@@ -15,6 +15,8 @@ public static class AppPaths
 
     public static string SingBoxConfigFile => Path.Combine(Root, "sing-box.json");
 
+    public static string SingBoxPidFile => Path.Combine(Root, "sing-box.pid");
+
     public static void EnsureRoot()
     {
         Directory.CreateDirectory(Root);

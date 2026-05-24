@@ -4,10 +4,14 @@
         <OutputType>WinExe</OutputType>
         <TargetFramework>net10.0-windows</TargetFramework>
         <Nullable>enable</Nullable>
+        <UseWPF>true</UseWPF>
         <UseWindowsForms>true</UseWindowsForms>
         <ImplicitUsings>enable</ImplicitUsings>
         <ApplicationIcon>Resources\app.ico</ApplicationIcon>
-        <RootNamespace>WPT.WinForms</RootNamespace>
+        <RootNamespace>WPT.Wpf</RootNamespace>
+        <AssemblyName>WPT</AssemblyName>
+        <Product>WPT</Product>
+        <AssemblyTitle>WPT</AssemblyTitle>
     </PropertyGroup>
 
     <ItemGroup>
@@ -18,14 +22,6 @@
         <Content Include="Resources\app.ico">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
-        <None Include="Resources\source-icon.png" />
     </ItemGroup>
-
-    <Target Name="GenerateAppIcon" BeforeTargets="BeforeBuild"
-            Inputs="Resources\source-icon.png"
-            Outputs="Resources\app.ico">
-        <Exec Command="dotnet run --project &quot;$(MSBuildThisFileDirectory)..\tools\BuildIcon\BuildIcon.csproj&quot;"
-              WorkingDirectory="$(MSBuildThisFileDirectory).." />
-    </Target>
 
 </Project>

@@ -28,6 +28,8 @@ public sealed class AppSettings
 
     public bool StartProxyWithApp { get; set; }
 
+    public bool StartMinimizedToTray { get; set; }
+
     public bool NotifyOnMinimizeToTray { get; set; } = true;
 
     public bool UpdateListsOnStartup { get; set; } = true;
