@@ -1,5 +1,4 @@
 using System.Drawing;
-using System.IO;
 using System.Windows;
 using System.Windows.Forms;
 using WPT.Core;
@@ -24,18 +23,7 @@ public sealed class TrayService : IDisposable
         _window = window;
         _viewModel = viewModel;
 
-        Icon? icon = null;
-        try
-        {
-            var iconPath = Path.Combine(AppContext.BaseDirectory, "Resources", "app.ico");
-            if (File.Exists(iconPath))
-            {
-                icon = new Icon(iconPath);
-            }
-        }
-        catch
-        {
-        }
+        Icon? icon = AppIcon.CreateTrayIcon();
 
         _notifyIcon = new NotifyIcon
         {

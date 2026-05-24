@@ -1,10 +1,6 @@
-using System.IO;
-
 using System.Windows;
 
 using System.Windows.Interop;
-
-using System.Windows.Media.Imaging;
 
 using WPT.Wpf.Services;
 
@@ -33,7 +29,7 @@ public partial class MainWindow : Window
     {
 
         InitializeComponent();
-        TrySetWindowIcon(this);
+        AppIcon.ApplyTo(this);
 
         _viewModel = new MainViewModel();
 
@@ -69,22 +65,6 @@ public partial class MainWindow : Window
     }
 
     public void StopLocalProxyOnExit() => _viewModel.StopLocalProxyOnExit();
-
-    private static void TrySetWindowIcon(Window window)
-    {
-        try
-        {
-            var iconPath = Path.Combine(AppContext.BaseDirectory, "Resources", "app.ico");
-
-            if (File.Exists(iconPath))
-            {
-                window.Icon = BitmapFrame.Create(new Uri(iconPath, UriKind.Absolute));
-            }
-        }
-        catch
-        {
-        }
-    }
 
     protected override void OnClosed(EventArgs e)
     {
