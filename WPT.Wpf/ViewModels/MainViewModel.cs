@@ -35,6 +35,7 @@ public sealed class MainViewModel : ViewModelBase
     private bool _startMinimizedToTray;
     private bool _notifyOnMinimizeToTray;
     private bool _updateListsOnStartup;
+    private bool _routeAllTrafficThroughProxy;
     private ServiceListDefinition? _selectedListToAdd;
 
     public MainViewModel()
@@ -259,6 +260,20 @@ public sealed class MainViewModel : ViewModelBase
         set => SetProperty(ref _updateListsOnStartup, value);
     }
 
+    public bool RouteAllTrafficThroughProxy
+    {
+        get => _routeAllTrafficThroughProxy;
+        set
+        {
+            if (SetProperty(ref _routeAllTrafficThroughProxy, value))
+            {
+                OnPropertyChanged(nameof(IsTunnelingListsEnabled));
+            }
+        }
+    }
+
+    public bool IsTunnelingListsEnabled => !RouteAllTrafficThroughProxy;
+
     public RelayCommand ApplyCommand { get; }
 
     public RelayCommand ShowPacCommand { get; }
@@ -407,6 +422,7 @@ public sealed class MainViewModel : ViewModelBase
         StartMinimizedToTray = _settings.StartMinimizedToTray;
         NotifyOnMinimizeToTray = _settings.NotifyOnMinimizeToTray;
         UpdateListsOnStartup = _settings.UpdateListsOnStartup;
+        RouteAllTrafficThroughProxy = _settings.RouteAllTrafficThroughProxy;
         ProxyLink = _settings.ProxyLink;
         LocalPort = _settings.LocalProxyPort.ToString();
         if (InputParser.TryParsePort(LocalPort, out var localPort, out _))
@@ -699,12 +715,24 @@ public sealed class MainViewModel : ViewModelBase
             SaveSettings(pac.Value.Hash, isActive: true);
 
             RefreshPacState();
-            StatusMessage = $"PAC активен: {pac.Value.DomainsCount} доменов, {pac.Value.SubnetsCount} подсетей";
+
+            if (RouteAllTrafficThroughProxy)
+            {
+                StatusMessage = "PAC активен: весь трафик через прокси";
+            }
+            else
+            {
+                StatusMessage = $"PAC активен: {pac.Value.DomainsCount} доменов, {pac.Value.SubnetsCount} подсетей";
+            }
 
             if (!silent)
             {
+                var details = RouteAllTrafficThroughProxy
+                    ? "Режим: весь трафик через прокси"
+                    : $"Доменов: {pac.Value.DomainsCount}\nПодсетей: {pac.Value.SubnetsCount}";
+
                 MessageBox.Show(
-                    $"PAC-файл применён.\n\nАдрес: {pacUrl}\nДоменов: {pac.Value.DomainsCount}\nПодсетей: {pac.Value.SubnetsCount}",
+                    $"PAC-файл применён.\n\nАдрес: {pacUrl}\n{details}",
                     "Готово",
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
@@ -735,6 +763,12 @@ public sealed class MainViewModel : ViewModelBase
             }
 
             return null;
+        }
+
+        if (RouteAllTrafficThroughProxy)
+        {
+            var allTraffic = PacGenerator.GenerateAllTraffic(host, port);
+            return (allTraffic.Content, allTraffic.Hash, 0, 0);
         }
 
         if (_selectedListIds.Count == 0 && CustomDomains.Count == 0 && CustomIps.Count == 0)
@@ -880,6 +914,7 @@ public sealed class MainViewModel : ViewModelBase
         _settings.SelectedListIds = _selectedListIds.ToList();
         _settings.CustomDomains = CustomDomains.ToList();
         _settings.CustomIps = CustomIps.ToList();
+        _settings.RouteAllTrafficThroughProxy = RouteAllTrafficThroughProxy;
     }
 
     private void UpdateAppSettingsPreferences()

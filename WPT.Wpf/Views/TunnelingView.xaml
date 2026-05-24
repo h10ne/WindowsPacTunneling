@@ -22,6 +22,8 @@
 
         <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
 
+        <conv:BoolToOpacityConverter x:Key="BoolToOpacity" />
+
         <Style x:Key="CustomListItem" TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
 
             <Setter Property="Padding" Value="0" />
@@ -49,6 +51,24 @@
         <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
 
             <StackPanel HorizontalAlignment="Stretch">
+
+
+
+                <Border Style="{StaticResource Card}">
+
+                    <StackPanel Style="{StaticResource CardContent}" MinWidth="440">
+
+                        <CheckBox Content="Весь трафик через прокси"
+
+                                  IsChecked="{Binding RouteAllTrafficThroughProxy}" />
+
+                        <TextBlock Text="Все сайты будут направляться через прокси-сервер, списки сервисов не используются"
+
+                                   Style="{StaticResource CaptionText}" Margin="24,4,0,0" />
+
+                    </StackPanel>
+
+                </Border>
 
 
 
@@ -91,6 +111,56 @@
                     </Grid>
 
                 </Border>
+
+
+
+                <Border Style="{StaticResource DisabledHintBar}"
+
+                        Visibility="{Binding RouteAllTrafficThroughProxy, Converter={StaticResource BoolToVis}}">
+
+                    <TextBlock Text="Не используется — включён режим «Весь трафик через прокси»"
+
+                               Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" TextWrapping="Wrap" />
+
+                </Border>
+
+
+
+                <Border Opacity="{Binding IsTunnelingListsEnabled, Converter={StaticResource BoolToOpacity}}">
+
+                    <Border.Style>
+
+                        <Style TargetType="Border">
+
+                            <Setter Property="BorderThickness" Value="0" />
+
+                            <Setter Property="Padding" Value="0" />
+
+                            <Style.Triggers>
+
+                                <DataTrigger Binding="{Binding RouteAllTrafficThroughProxy}" Value="True">
+
+                                    <Setter Property="Background" Value="#18000000" />
+
+                                    <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+
+                                    <Setter Property="BorderThickness" Value="1" />
+
+                                    <Setter Property="CornerRadius" Value="{StaticResource RadiusMd}" />
+
+                                    <Setter Property="Padding" Value="12,10,12,2" />
+
+                                </DataTrigger>
+
+                            </Style.Triggers>
+
+                        </Style>
+
+                    </Border.Style>
+
+
+
+                    <StackPanel IsEnabled="{Binding IsTunnelingListsEnabled}">
 
 
 
@@ -315,6 +385,12 @@
                     </StackPanel>
 
                 </Expander>
+
+
+
+                    </StackPanel>
+
+                </Border>
 
 
 

@@ -619,6 +619,15 @@
         <Setter Property="Margin" Value="0,8,0,0" />
     </Style>
 
+    <Style x:Key="DisabledHintBar" TargetType="Border">
+        <Setter Property="Background" Value="#FF222225" />
+        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource RadiusSm}" />
+        <Setter Property="Padding" Value="12,10" />
+        <Setter Property="Margin" Value="0,0,0,8" />
+    </Style>
+
     <Style x:Key="Card" TargetType="Border">
         <Setter Property="Background" Value="{StaticResource CardBrush}" />
         <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />

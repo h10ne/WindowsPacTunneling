@@ -37,4 +37,6 @@ public sealed class AppSettings
     public bool IsProxyActive { get; set; }
 
     public string? ActivePacHash { get; set; }
+
+    public bool RouteAllTrafficThroughProxy { get; set; }
 }
