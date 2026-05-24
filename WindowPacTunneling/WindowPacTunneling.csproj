@@ -1,0 +1,26 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>WinExe</OutputType>
+        <TargetFramework>net10.0-windows</TargetFramework>
+        <Nullable>enable</Nullable>
+        <UseWindowsForms>true</UseWindowsForms>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <ApplicationIcon>Resources\app.ico</ApplicationIcon>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <Content Include="Resources\app.ico">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <None Include="Resources\source-icon.png" />
+    </ItemGroup>
+
+    <Target Name="GenerateAppIcon" BeforeTargets="BeforeBuild"
+            Inputs="Resources\source-icon.png"
+            Outputs="Resources\app.ico">
+        <Exec Command="dotnet run --project &quot;$(MSBuildThisFileDirectory)..\tools\BuildIcon\BuildIcon.csproj&quot;"
+              WorkingDirectory="$(MSBuildThisFileDirectory).." />
+    </Target>
+
+</Project>
