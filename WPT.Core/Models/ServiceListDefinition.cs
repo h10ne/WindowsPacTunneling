@@ -68,13 +68,6 @@ public sealed class ServiceListDefinition
         },
         new ServiceListDefinition
         {
-            Id = "discord",
-            DisplayName = "Discord",
-            DomainFiles = ["Services/discord.lst"],
-            SubnetFiles = ["Subnets/IPv4/discord.lst"]
-        },
-        new ServiceListDefinition
-        {
             Id = "meta",
             DisplayName = "Meta",
             DomainFiles = ["Services/meta.lst"],

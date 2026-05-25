@@ -36,6 +36,7 @@ public sealed class MainViewModel : ViewModelBase
     private bool _notifyOnMinimizeToTray;
     private bool _updateListsOnStartup;
     private bool _routeAllTrafficThroughProxy;
+    private bool _showRussiaInsideRestrictionHint;
     private ServiceListDefinition? _selectedListToAdd;
 
     public MainViewModel()
@@ -274,6 +275,14 @@ public sealed class MainViewModel : ViewModelBase
 
     public bool IsTunnelingListsEnabled => !RouteAllTrafficThroughProxy;
 
+    public bool ShowRussiaInsideRestrictionHint
+    {
+        get => _showRussiaInsideRestrictionHint;
+        private set => SetProperty(ref _showRussiaInsideRestrictionHint, value);
+    }
+
+    public string RussiaInsideRestrictionHint => RussiaInsideListRules.InfoBarText;
+
     public RelayCommand ApplyCommand { get; }
 
     public RelayCommand ShowPacCommand { get; }
@@ -407,6 +416,11 @@ public sealed class MainViewModel : ViewModelBase
             }
         }
 
+        if (_selectedListIds.Contains(RussiaInsideListRules.RussiaInsideId))
+        {
+            RemoveListsNotAllowedWithRussiaInside();
+        }
+
         foreach (var domain in _settings.CustomDomains.OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
         {
             CustomDomains.Add(domain);
@@ -458,11 +472,39 @@ public sealed class MainViewModel : ViewModelBase
         var list = _selectedListToAdd;
         ResetSelectedListToAdd();
 
-        if (!_selectedListIds.Add(list.Id))
+        if (_selectedListIds.Contains(list.Id))
         {
             return;
         }
 
+        var hasRussiaInside = _selectedListIds.Contains(RussiaInsideListRules.RussiaInsideId);
+
+        if (hasRussiaInside)
+        {
+            if (RussiaInsideListRules.IsIncludedInRussiaInside(list.Id))
+            {
+                ShowRussiaInsideRestrictionHint = true;
+                return;
+            }
+
+            if (!RussiaInsideListRules.IsAllowedWithRussiaInside(list.Id))
+            {
+                return;
+            }
+        }
+
+        if (RussiaInsideListRules.IsRussiaInside(list.Id))
+        {
+            var hadIncludedLists = _selectedListIds.Any(RussiaInsideListRules.IsIncludedInRussiaInside);
+            RemoveListsNotAllowedWithRussiaInside();
+
+            if (hadIncludedLists)
+            {
+                ShowRussiaInsideRestrictionHint = true;
+            }
+        }
+
+        _selectedListIds.Add(list.Id);
         SelectedLists.Add(new ListChipItem(list.Id, list.DisplayName));
     }
 
@@ -481,6 +523,15 @@ public sealed class MainViewModel : ViewModelBase
     {
         _selectedListIds.Remove(item.Id);
         SelectedLists.Remove(item);
+    }
+
+    private void RemoveListsNotAllowedWithRussiaInside()
+    {
+        foreach (var item in SelectedLists.Where(x => !RussiaInsideListRules.IsAllowedWithRussiaInside(x.Id)).ToList())
+        {
+            _selectedListIds.Remove(item.Id);
+            SelectedLists.Remove(item);
+        }
     }
 
     private void AddCustomDomain()
@@ -689,6 +740,7 @@ public sealed class MainViewModel : ViewModelBase
 
     private async Task ApplyAsync(bool silent = false)
     {
+        ShowRussiaInsideRestrictionHint = false;
         IsBusy = true;
 
         try
