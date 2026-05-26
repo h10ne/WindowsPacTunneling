@@ -8,6 +8,22 @@ public sealed class LocalProxyService : IDisposable
 {
     private Process? _process;
     private readonly object _sync = new();
+    private readonly string _configPath;
+    private readonly string _pidPath;
+
+    public LocalProxyService(string? instanceName = null)
+    {
+        if (string.IsNullOrWhiteSpace(instanceName))
+        {
+            _configPath = AppPaths.SingBoxConfigFile;
+            _pidPath = AppPaths.SingBoxPidFile;
+        }
+        else
+        {
+            _configPath = AppPaths.SingBoxConfigFileFor(instanceName);
+            _pidPath = AppPaths.SingBoxPidFileFor(instanceName);
+        }
+    }
 
     public bool IsRunning
     {
@@ -57,7 +73,7 @@ public sealed class LocalProxyService : IDisposable
         }
 
         AppPaths.EnsureRoot();
-        var configPath = AppPaths.SingBoxConfigFile;
+        var configPath = _configPath;
         var config = SingBoxConfigBuilder.Build(profile, localPort);
         await File.WriteAllTextAsync(configPath, config, cancellationToken);
 
@@ -112,19 +128,7 @@ public sealed class LocalProxyService : IDisposable
 
     public void Stop()
     {
-        Process? process;
-        lock (_sync)
-        {
-            process = _process;
-            _process = null;
-        }
-
-        if (process != null)
-        {
-            TryKillProcess(process);
-        }
-
-        KillManagedSingBoxProcesses();
+        KillManagedProcess();
         ClearPidFile();
     }
 
@@ -151,12 +155,12 @@ public sealed class LocalProxyService : IDisposable
 
     private void TryAdoptFromPidFile()
     {
-        if (!File.Exists(AppPaths.SingBoxPidFile))
+        if (!File.Exists(_pidPath))
         {
             return;
         }
 
-        if (!int.TryParse(File.ReadAllText(AppPaths.SingBoxPidFile).Trim(), out var pid))
+        if (!int.TryParse(File.ReadAllText(_pidPath).Trim(), out var pid))
         {
             ClearPidFile();
             return;
@@ -186,46 +190,66 @@ public sealed class LocalProxyService : IDisposable
 
     private bool HasManagedSingBoxProcess()
     {
-        foreach (var process in EnumerateManagedSingBoxProcesses())
+        if (!File.Exists(_pidPath))
         {
-            process.Dispose();
-            return true;
+            return false;
         }
 
-        return false;
-    }
-
-    private void KillManagedSingBoxProcesses()
-    {
-        foreach (var process in EnumerateManagedSingBoxProcesses())
+        if (!int.TryParse(File.ReadAllText(_pidPath).Trim(), out var pid))
         {
-            TryKillProcess(process);
-            process.Dispose();
+            return false;
         }
-    }
 
-    private IEnumerable<Process> EnumerateManagedSingBoxProcesses()
-    {
-        Process[] processes;
         try
         {
-            processes = Process.GetProcessesByName("sing-box");
+            using var process = Process.GetProcessById(pid);
+            return !process.HasExited && IsManagedProcess(process);
         }
         catch
         {
-            yield break;
+            return false;
+        }
+    }
+
+    private void KillManagedProcess()
+    {
+        Process? process;
+        lock (_sync)
+        {
+            process = _process;
+            _process = null;
         }
 
-        foreach (var process in processes)
+        if (process != null)
         {
-            if (IsManagedProcess(process))
+            TryKillProcess(process);
+            return;
+        }
+
+        if (!File.Exists(_pidPath))
+        {
+            return;
+        }
+
+        if (!int.TryParse(File.ReadAllText(_pidPath).Trim(), out var pid))
+        {
+            return;
+        }
+
+        try
+        {
+            var orphan = Process.GetProcessById(pid);
+            if (IsManagedProcess(orphan))
             {
-                yield return process;
+                TryKillProcess(orphan);
             }
             else
             {
-                process.Dispose();
+                orphan.Dispose();
             }
+        }
+        catch
+        {
         }
     }
 
@@ -261,17 +285,17 @@ public sealed class LocalProxyService : IDisposable
         }
     }
 
-    private static void WritePidFile(int pid)
+    private void WritePidFile(int pid)
     {
         AppPaths.EnsureRoot();
-        File.WriteAllText(AppPaths.SingBoxPidFile, pid.ToString());
+        File.WriteAllText(_pidPath, pid.ToString());
     }
 
-    private static void ClearPidFile()
+    private void ClearPidFile()
     {
-        if (File.Exists(AppPaths.SingBoxPidFile))
+        if (File.Exists(_pidPath))
         {
-            File.Delete(AppPaths.SingBoxPidFile);
+            File.Delete(_pidPath);
         }
     }
 

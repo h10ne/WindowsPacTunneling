@@ -17,10 +17,26 @@ public static class AppPaths
 
     public static string SingBoxPidFile => Path.Combine(Root, "sing-box.pid");
 
+    public static string SingBoxConfigFileFor(string instanceName) =>
+        Path.Combine(Root, $"sing-box-{instanceName}.json");
+
+    public static string SingBoxPidFileFor(string instanceName) =>
+        Path.Combine(Root, $"sing-box-{instanceName}.pid");
+
+    public static string RedirectorBinary => Path.Combine(BinDirectory, "Redirector.bin");
+
+    public static string RedirectorApiDll => Path.Combine(BinDirectory, "nfapi.dll");
+
+    public static string NetFilterDriver => Path.Combine(BinDirectory, "nfdriver.sys");
+
+    public static string BundledRedirectorDirectory =>
+        Path.Combine(AppContext.BaseDirectory, "ThirdParty", "Netch");
+
     public static void EnsureRoot()
     {
         Directory.CreateDirectory(Root);
         Directory.CreateDirectory(ListsDirectory);
         Directory.CreateDirectory(BinDirectory);
     }
+
 }

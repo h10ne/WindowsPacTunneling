@@ -216,103 +216,235 @@ public static class ProxyLinkParser
         profile = null!;
         error = string.Empty;
 
-        string method;
-        string password;
-        string server;
-        int port;
-
-        if (!string.IsNullOrEmpty(uri.UserInfo) && uri.UserInfo.Contains(':', StringComparison.Ordinal))
+        if (!string.IsNullOrEmpty(uri.UserInfo))
         {
-            var parts = uri.UserInfo.Split(':', 2);
-            method = parts[0];
-            password = parts[1];
-            server = uri.Host;
-            port = uri.Port;
-        }
-        else
-        {
-            var payload = input["ss://".Length..];
-            var fragmentIndex = payload.IndexOf('#');
-            if (fragmentIndex >= 0)
+            if (uri.UserInfo.Contains(':', StringComparison.Ordinal))
             {
-                payload = payload[..fragmentIndex];
+                var parts = uri.UserInfo.Split(':', 2);
+                return TryBuildShadowsocksProfile(
+                    parts[0],
+                    parts[1],
+                    uri.Host,
+                    uri.Port,
+                    DecodeFragment(uri.Fragment),
+                    out profile,
+                    out error);
             }
 
-            payload = payload.Trim();
-            if (payload.Contains('@'))
+            if (TryDecodeBase64(Uri.UnescapeDataString(uri.UserInfo), out var sip002Credentials)
+                && TrySplitShadowsocksCredentials(sip002Credentials, out var sip002Method, out var sip002Password)
+                && TryParseShadowsocksEndpoint(uri.Host, uri.Port, out var sip002Server, out var sip002Port, out error))
             {
-                var decoded = Encoding.UTF8.GetString(Convert.FromBase64String(NormalizeBase64(payload)));
-                var atIndex = decoded.LastIndexOf('@');
-                if (atIndex <= 0)
-                {
-                    error = "Shadowsocks: некорректный формат ссылки";
-                    return false;
-                }
-
-                var credentials = decoded[..atIndex];
-                var endpoint = decoded[(atIndex + 1)..];
-                var colonIndex = credentials.IndexOf(':');
-                if (colonIndex <= 0)
-                {
-                    error = "Shadowsocks: некорректный формат учётных данных";
-                    return false;
-                }
-
-                method = credentials[..colonIndex];
-                password = credentials[(colonIndex + 1)..];
-                var lastColon = endpoint.LastIndexOf(':');
-                if (lastColon <= 0)
-                {
-                    error = "Shadowsocks: некорректный адрес сервера";
-                    return false;
-                }
-
-                server = endpoint[..lastColon];
-                if (!int.TryParse(endpoint[(lastColon + 1)..], out port) || port is <= 0 or > 65535)
-                {
-                    error = "Shadowsocks: некорректный порт сервера";
-                    return false;
-                }
-            }
-            else
-            {
-                var decoded = Encoding.UTF8.GetString(Convert.FromBase64String(NormalizeBase64(payload)));
-                var firstAt = decoded.IndexOf('@');
-                if (firstAt > 0)
-                {
-                    var credentials = decoded[..firstAt];
-                    var endpoint = decoded[(firstAt + 1)..];
-                    var colonIndex = credentials.IndexOf(':');
-                    method = credentials[..colonIndex];
-                    password = credentials[(colonIndex + 1)..];
-                    var lastColon = endpoint.LastIndexOf(':');
-                    server = endpoint[..lastColon];
-                    port = int.Parse(endpoint[(lastColon + 1)..]);
-                }
-                else
-                {
-                    var colonIndex = decoded.IndexOf(':');
-                    if (colonIndex <= 0)
-                    {
-                        error = "Shadowsocks: некорректный формат ссылки";
-                        return false;
-                    }
-
-                    method = decoded[..colonIndex];
-                    var rest = decoded[(colonIndex + 1)..];
-                    var atIndex = rest.IndexOf('@');
-                    password = rest[..atIndex];
-                    var endpoint = rest[(atIndex + 1)..];
-                    var lastColon = endpoint.LastIndexOf(':');
-                    server = endpoint[..lastColon];
-                    port = int.Parse(endpoint[(lastColon + 1)..]);
-                }
+                return TryBuildShadowsocksProfile(
+                    sip002Method,
+                    sip002Password,
+                    sip002Server,
+                    sip002Port,
+                    DecodeFragment(uri.Fragment),
+                    out profile,
+                    out error);
             }
         }
+
+        var payload = input["ss://".Length..];
+        var fragmentIndex = payload.IndexOf('#');
+        if (fragmentIndex >= 0)
+        {
+            payload = payload[..fragmentIndex];
+        }
+
+        var queryIndex = payload.IndexOf('?');
+        if (queryIndex >= 0)
+        {
+            payload = payload[..queryIndex];
+        }
+
+        payload = payload.Trim();
+        if (string.IsNullOrWhiteSpace(payload))
+        {
+            error = "Shadowsocks: пустая ссылка";
+            return false;
+        }
+
+        var atIndex = payload.IndexOf('@');
+        if (atIndex > 0)
+        {
+            var encodedCredentials = payload[..atIndex];
+            var endpoint = payload[(atIndex + 1)..];
+
+            if (TryDecodeBase64(encodedCredentials, out var credentials)
+                && TrySplitShadowsocksCredentials(credentials, out var sipMethod, out var sipPassword)
+                && TryParseShadowsocksEndpoint(endpoint, 0, out var sipServer, out var sipPort, out error))
+            {
+                return TryBuildShadowsocksProfile(
+                    sipMethod,
+                    sipPassword,
+                    sipServer,
+                    sipPort,
+                    DecodeFragment(uri.Fragment),
+                    out profile,
+                    out error);
+            }
+        }
+
+        if (!TryDecodeBase64(payload, out var decoded))
+        {
+            error = "Shadowsocks: некорректная Base64-часть ссылки";
+            return false;
+        }
+
+        return TryParseLegacyShadowsocksPayload(decoded, DecodeFragment(uri.Fragment), out profile, out error);
+    }
+
+    private static bool TryParseLegacyShadowsocksPayload(string decoded, string? remark, out ProxyProfile profile, out string error)
+    {
+        profile = null!;
+        error = string.Empty;
+
+        var atIndex = decoded.IndexOf('@');
+        if (atIndex > 0)
+        {
+            var credentials = decoded[..atIndex];
+            var endpoint = decoded[(atIndex + 1)..];
+
+            if (TrySplitShadowsocksCredentials(credentials, out var legacyMethod, out var legacyPassword)
+                && TryParseShadowsocksEndpoint(endpoint, 0, out var legacyServer, out var legacyPort, out error))
+            {
+                return TryBuildShadowsocksProfile(
+                    legacyMethod,
+                    legacyPassword,
+                    legacyServer,
+                    legacyPort,
+                    remark,
+                    out profile,
+                    out error);
+            }
+        }
+
+        var colonIndex = decoded.IndexOf(':');
+        if (colonIndex <= 0)
+        {
+            error = "Shadowsocks: некорректный формат ссылки";
+            return false;
+        }
+
+        var method = decoded[..colonIndex];
+        var rest = decoded[(colonIndex + 1)..];
+        atIndex = rest.IndexOf('@');
+        if (atIndex <= 0)
+        {
+            error = "Shadowsocks: некорректный формат ссылки";
+            return false;
+        }
+
+        var password = rest[..atIndex];
+        var endpointPart = rest[(atIndex + 1)..];
+
+        if (!TryParseShadowsocksEndpoint(endpointPart, 0, out var altServer, out var altPort, out error))
+        {
+            return false;
+        }
+
+        return TryBuildShadowsocksProfile(method, password, altServer, altPort, remark, out profile, out error);
+    }
+
+    private static bool TrySplitShadowsocksCredentials(string credentials, out string method, out string password)
+    {
+        method = string.Empty;
+        password = string.Empty;
+
+        var colonIndex = credentials.IndexOf(':');
+        if (colonIndex <= 0 || colonIndex >= credentials.Length - 1)
+        {
+            return false;
+        }
+
+        method = credentials[..colonIndex];
+        password = credentials[(colonIndex + 1)..];
+        return !string.IsNullOrWhiteSpace(method) && !string.IsNullOrWhiteSpace(password);
+    }
+
+    private static bool TryParseShadowsocksEndpoint(string endpoint, int fallbackPort, out string server, out int port, out string error)
+    {
+        server = string.Empty;
+        port = fallbackPort;
+        error = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(endpoint))
+        {
+            error = "Shadowsocks: не указан сервер";
+            return false;
+        }
+
+        if (endpoint.StartsWith('['))
+        {
+            var closingBracket = endpoint.IndexOf(']');
+            if (closingBracket <= 1)
+            {
+                error = "Shadowsocks: некорректный IPv6-адрес";
+                return false;
+            }
+
+            server = endpoint[1..closingBracket];
+            if (closingBracket + 1 >= endpoint.Length || endpoint[closingBracket + 1] != ':')
+            {
+                error = "Shadowsocks: некорректный порт сервера";
+                return false;
+            }
+
+            if (!int.TryParse(endpoint[(closingBracket + 2)..], out port) || port is <= 0 or > 65535)
+            {
+                error = "Shadowsocks: некорректный порт сервера";
+                return false;
+            }
+
+            return true;
+        }
+
+        var lastColon = endpoint.LastIndexOf(':');
+        if (lastColon <= 0 || lastColon >= endpoint.Length - 1)
+        {
+            error = "Shadowsocks: некорректный адрес сервера";
+            return false;
+        }
+
+        server = endpoint[..lastColon];
+        if (!int.TryParse(endpoint[(lastColon + 1)..], out port) || port is <= 0 or > 65535)
+        {
+            error = "Shadowsocks: некорректный порт сервера";
+            return false;
+        }
+
+        return !string.IsNullOrWhiteSpace(server);
+    }
+
+    private static bool TryBuildShadowsocksProfile(
+        string method,
+        string password,
+        string server,
+        int port,
+        string? remark,
+        out ProxyProfile profile,
+        out string error)
+    {
+        profile = null!;
+        error = string.Empty;
 
         if (string.IsNullOrWhiteSpace(method) || string.IsNullOrWhiteSpace(password))
         {
             error = "Shadowsocks: отсутствует метод или пароль";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(server))
+        {
+            error = "Shadowsocks: не указан сервер";
+            return false;
+        }
+
+        if (port is <= 0 or > 65535)
+        {
+            error = "Shadowsocks: некорректный порт сервера";
             return false;
         }
 
@@ -321,12 +453,32 @@ public static class ProxyLinkParser
             Protocol = "ss",
             Server = server,
             ServerPort = port,
-            Remark = DecodeFragment(uri.Fragment),
+            Remark = remark,
             Method = method,
             Password = password
         };
 
         return true;
+    }
+
+    private static bool TryDecodeBase64(string input, out string decoded)
+    {
+        decoded = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            return false;
+        }
+
+        try
+        {
+            decoded = Encoding.UTF8.GetString(Convert.FromBase64String(NormalizeBase64(input.Trim())));
+            return true;
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
     }
 
     private static Dictionary<string, string> ParseQuery(string query)

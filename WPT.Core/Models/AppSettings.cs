@@ -28,6 +28,8 @@ public sealed class AppSettings
 
     public bool StartProxyWithApp { get; set; }
 
+    public bool StartProcessModeWithApp { get; set; }
+
     public bool StartMinimizedToTray { get; set; }
 
     public bool NotifyOnMinimizeToTray { get; set; } = true;
@@ -39,4 +41,12 @@ public sealed class AppSettings
     public string? ActivePacHash { get; set; }
 
     public bool RouteAllTrafficThroughProxy { get; set; }
+
+    public string ProcessModeLink { get; set; } = string.Empty;
+
+    public int ProcessModePort { get; set; } = 20808;
+
+    public List<string> ProcessModeApplications { get; set; } = [];
+
+    public bool IsProcessModeActive { get; set; }
 }

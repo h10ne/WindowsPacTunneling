@@ -14,6 +14,7 @@ public sealed class MainViewModel : ViewModelBase
     private readonly DomainListService _domainListService = new();
     private readonly PacHttpServer _pacHttpServer = new();
     private readonly LocalProxyService _localProxyService = new();
+    private readonly ProcessModeService _processModeService = new();
     private readonly AppSettings _settings = SettingsService.Load();
     private readonly HashSet<string> _selectedListIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly DispatcherTimer _dailyUpdateTimer;
@@ -22,6 +23,10 @@ public sealed class MainViewModel : ViewModelBase
     private string _pacPort = string.Empty;
     private string _proxyLink = string.Empty;
     private string _localPort = string.Empty;
+    private string _processModeLink = string.Empty;
+    private string _processModePort = string.Empty;
+    private string _newProcessModeApp = string.Empty;
+    private string _processModeStatus = "Process Mode: остановлен";
     private string _newDomain = string.Empty;
     private string _newIp = string.Empty;
     private string _statusMessage = "Готово";
@@ -32,6 +37,7 @@ public sealed class MainViewModel : ViewModelBase
     private bool _isBusy;
     private bool _startWithWindows;
     private bool _startProxyWithApp;
+    private bool _startProcessModeWithApp;
     private bool _startMinimizedToTray;
     private bool _notifyOnMinimizeToTray;
     private bool _updateListsOnStartup;
@@ -44,6 +50,7 @@ public sealed class MainViewModel : ViewModelBase
         SelectedLists = [];
         CustomDomains = [];
         CustomIps = [];
+        ProcessModeApplications = [];
         ProxyHistory = [];
         PacPortHistory = [];
         AvailableLists = [.. ServiceListDefinition.All];
@@ -58,6 +65,11 @@ public sealed class MainViewModel : ViewModelBase
         RemoveDomainCommand = new RelayCommand(p => RemoveCustomDomain((string)p!));
         AddIpCommand = new RelayCommand(AddCustomIp);
         RemoveIpCommand = new RelayCommand(p => RemoveCustomIp((string)p!));
+        ApplyProcessModeCommand = new RelayCommand(ApplyProcessMode, () => !IsBusy && !IsProcessModeRunning);
+        ToggleProcessModeCommand = new RelayCommand(async () => await ToggleProcessModeAsync(), () => !IsBusy);
+        AddProcessModeAppCommand = new RelayCommand(AddProcessModeApp);
+        RemoveProcessModeAppCommand = new RelayCommand(p => RemoveProcessModeApp((string)p!));
+        PickRunningProcessCommand = new RelayCommand(_ => { });
         UpdateListsCommand = new RelayCommand(async () => await UpdateListsAsync());
         SaveSettingsCommand = new RelayCommand(SaveAppSettings);
         OpenDataFolderCommand = new RelayCommand(OpenDataFolder);
@@ -85,6 +97,8 @@ public sealed class MainViewModel : ViewModelBase
     public ObservableCollection<string> CustomDomains { get; }
 
     public ObservableCollection<string> CustomIps { get; }
+
+    public ObservableCollection<string> ProcessModeApplications { get; }
 
     public ObservableCollection<string> ProxyHistory { get; }
 
@@ -114,6 +128,30 @@ public sealed class MainViewModel : ViewModelBase
     {
         get => _localPort;
         set => SetProperty(ref _localPort, value);
+    }
+
+    public string ProcessModeLink
+    {
+        get => _processModeLink;
+        set => SetProperty(ref _processModeLink, value);
+    }
+
+    public string ProcessModePort
+    {
+        get => _processModePort;
+        set => SetProperty(ref _processModePort, value);
+    }
+
+    public string NewProcessModeApp
+    {
+        get => _newProcessModeApp;
+        set => SetProperty(ref _newProcessModeApp, value);
+    }
+
+    public string ProcessModeStatus
+    {
+        get => _processModeStatus;
+        set => SetProperty(ref _processModeStatus, value);
     }
 
     public string NewDomain
@@ -153,6 +191,7 @@ public sealed class MainViewModel : ViewModelBase
 
             OnPropertyChanged(nameof(IsTunnelingPage));
             OnPropertyChanged(nameof(IsProxyPage));
+            OnPropertyChanged(nameof(IsProcessModePage));
             OnPropertyChanged(nameof(IsSettingsPage));
         }
     }
@@ -169,10 +208,16 @@ public sealed class MainViewModel : ViewModelBase
         set { if (value) SelectedSection = 1; }
     }
 
-    public bool IsSettingsPage
+    public bool IsProcessModePage
     {
         get => SelectedSection == 2;
         set { if (value) SelectedSection = 2; }
+    }
+
+    public bool IsSettingsPage
+    {
+        get => SelectedSection == 3;
+        set { if (value) SelectedSection = 3; }
     }
 
     public string StatusMessage
@@ -227,9 +272,15 @@ public sealed class MainViewModel : ViewModelBase
 
     public bool IsProxyRunning => _localProxyService.IsRunning;
 
+    public bool IsProcessModeRunning => _processModeService.IsRunning;
+
     public bool IsProxyEditingEnabled => !IsProxyRunning && !IsBusy;
 
+    public bool IsProcessModeEditingEnabled => !IsProcessModeRunning && !IsBusy;
+
     public string ProxyToggleLabel => IsProxyRunning ? "Остановить" : "Запустить";
+
+    public string ProcessModeToggleLabel => IsProcessModeRunning ? "Остановить" : "Запустить";
 
     public bool StartWithWindows
     {
@@ -241,6 +292,12 @@ public sealed class MainViewModel : ViewModelBase
     {
         get => _startProxyWithApp;
         set => SetProperty(ref _startProxyWithApp, value);
+    }
+
+    public bool StartProcessModeWithApp
+    {
+        get => _startProcessModeWithApp;
+        set => SetProperty(ref _startProcessModeWithApp, value);
     }
 
     public bool StartMinimizedToTray
@@ -303,6 +360,16 @@ public sealed class MainViewModel : ViewModelBase
 
     public RelayCommand RemoveIpCommand { get; }
 
+    public RelayCommand ApplyProcessModeCommand { get; }
+
+    public RelayCommand ToggleProcessModeCommand { get; }
+
+    public RelayCommand AddProcessModeAppCommand { get; }
+
+    public RelayCommand RemoveProcessModeAppCommand { get; }
+
+    public RelayCommand PickRunningProcessCommand { get; }
+
     public RelayCommand UpdateListsCommand { get; }
 
     public RelayCommand SaveSettingsCommand { get; }
@@ -332,6 +399,20 @@ public sealed class MainViewModel : ViewModelBase
                 }
             }
 
+            if (StartProcessModeWithApp
+                && !string.IsNullOrWhiteSpace(_settings.ProcessModeLink)
+                && ProcessModeApplications.Count > 0)
+            {
+                if (_processModeService.IsRunning)
+                {
+                    UpdateProcessModeUi();
+                }
+                else
+                {
+                    await StartProcessModeAsync(silent: true);
+                }
+            }
+
             if (StartProxyWithApp && _settings.IsProxyActive)
             {
                 await ApplyAsync(silent: true);
@@ -352,7 +433,9 @@ public sealed class MainViewModel : ViewModelBase
     public void SaveUiState()
     {
         UpdateTunnelingPreferences();
+        UpdateProcessModePreferences();
         SaveProxySettings(_localProxyService.IsRunning);
+        SaveProcessModeSettings(_processModeService.IsRunning);
     }
 
     public async Task ApplyFromTrayAsync()
@@ -373,12 +456,26 @@ public sealed class MainViewModel : ViewModelBase
         }
     }
 
+    public void StopProcessModeOnExit()
+    {
+        try
+        {
+            _processModeService.Stop();
+            SaveProcessModeSettings(isActive: false);
+            UpdateProcessModeUi();
+        }
+        catch
+        {
+        }
+    }
+
     public void Shutdown()
     {
         try
         {
             _pacHttpServer.Stop();
             StopLocalProxyOnExit();
+            StopProcessModeOnExit();
             SaveUiState();
         }
         catch
@@ -388,6 +485,7 @@ public sealed class MainViewModel : ViewModelBase
         _domainListService.Dispose();
         _pacHttpServer.Dispose();
         _localProxyService.Dispose();
+        _processModeService.Dispose();
     }
 
     private void LoadFromSettings()
@@ -433,6 +531,7 @@ public sealed class MainViewModel : ViewModelBase
 
         StartWithWindows = _settings.StartWithWindows;
         StartProxyWithApp = _settings.StartProxyWithApp;
+        StartProcessModeWithApp = _settings.StartProcessModeWithApp;
         StartMinimizedToTray = _settings.StartMinimizedToTray;
         NotifyOnMinimizeToTray = _settings.NotifyOnMinimizeToTray;
         UpdateListsOnStartup = _settings.UpdateListsOnStartup;
@@ -444,7 +543,20 @@ public sealed class MainViewModel : ViewModelBase
             _localProxyService.Prepare(localPort);
         }
 
+        ProcessModeLink = _settings.ProcessModeLink;
+        ProcessModePort = _settings.ProcessModePort.ToString();
+        if (InputParser.TryParsePort(ProcessModePort, out var processModePort, out _))
+        {
+            _processModeService.Prepare(processModePort);
+        }
+
+        foreach (var app in _settings.ProcessModeApplications.OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
+        {
+            ProcessModeApplications.Add(app);
+        }
+
         UpdateProxyUi();
+        UpdateProcessModeUi();
         RefreshPacState();
     }
 
@@ -572,6 +684,179 @@ public sealed class MainViewModel : ViewModelBase
     private void RemoveCustomDomain(string domain) => CustomDomains.Remove(domain);
 
     private void RemoveCustomIp(string ip) => CustomIps.Remove(ip);
+
+    private void AddProcessModeApp()
+    {
+        var value = NewProcessModeApp.Trim();
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return;
+        }
+
+        if (!value.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+        {
+            value += ".exe";
+        }
+
+        if (ContainsIgnoreCase(ProcessModeApplications, value))
+        {
+            return;
+        }
+
+        ProcessModeApplications.Add(value);
+        NewProcessModeApp = string.Empty;
+    }
+
+    private void RemoveProcessModeApp(string app) => ProcessModeApplications.Remove(app);
+
+    private void ApplyProcessMode()
+    {
+        if (IsProcessModeRunning)
+        {
+            return;
+        }
+
+        if (!InputParser.TryParsePort(ProcessModePort, out var port, out var portError))
+        {
+            MessageBox.Show(portError, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(ProcessModeLink)
+            && !ProxyLinkParser.TryParse(ProcessModeLink, out _, out var parseError))
+        {
+            MessageBox.Show(parseError, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        _processModeService.Prepare(port);
+        SaveProcessModeSettings(isActive: _processModeService.IsRunning);
+        StatusMessage = "Настройки Process Mode сохранены";
+        MessageBox.Show(
+            "Настройки Process Mode сохранены.",
+            "Готово",
+            MessageBoxButton.OK,
+            MessageBoxImage.Information);
+    }
+
+    private async Task ToggleProcessModeAsync()
+    {
+        if (_processModeService.IsRunning)
+        {
+            StopProcessMode();
+            return;
+        }
+
+        if (InputParser.TryParsePort(ProcessModePort, out var port, out _))
+        {
+            _processModeService.Prepare(port);
+        }
+
+        await StartProcessModeAsync();
+    }
+
+    private async Task StartProcessModeAsync(bool silent = false)
+    {
+        if (_processModeService.IsRunning)
+        {
+            return;
+        }
+
+        if (ProcessModeApplications.Count == 0)
+        {
+            if (!silent)
+            {
+                MessageBox.Show(
+                    "Добавьте хотя бы одно приложение в список.",
+                    "Ошибка",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
+
+            return;
+        }
+
+        if (!ProxyLinkParser.TryParse(ProcessModeLink, out var profile, out var parseError))
+        {
+            if (!silent)
+            {
+                MessageBox.Show(parseError, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+
+            return;
+        }
+
+        if (!InputParser.TryParsePort(ProcessModePort, out var localPort, out var portError))
+        {
+            if (!silent)
+            {
+                MessageBox.Show(portError, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+
+            return;
+        }
+
+        IsBusy = true;
+
+        try
+        {
+            var progress = new Progress<string>(message => ProcessModeStatus = message);
+            await _processModeService.StartAsync(
+                profile,
+                localPort,
+                ProcessModeApplications.ToList(),
+                progress,
+                CancellationToken.None);
+
+            SaveProcessModeSettings(isActive: true);
+            UpdateProcessModeUi();
+
+            if (!silent)
+            {
+                StatusMessage = $"Process Mode: {_processModeService.LocalProxyAddress}";
+            }
+        }
+        catch (Exception ex)
+        {
+            UpdateProcessModeUi();
+            if (!silent)
+            {
+                MessageBox.Show(ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private void StopProcessMode()
+    {
+        _processModeService.Stop();
+        SaveProcessModeSettings(isActive: false);
+        UpdateProcessModeUi();
+        StatusMessage = "Process Mode остановлен";
+    }
+
+    private void UpdateProcessModeUi()
+    {
+        var isRunning = _processModeService.IsRunning;
+        if (isRunning)
+        {
+            var apps = ProcessModeApplications.Count;
+            ProcessModeStatus =
+                $"Process Mode: работает · {_processModeService.LocalProxyAddress} · Redirector · {apps} прилож.";
+        }
+        else
+        {
+            ProcessModeStatus = "Process Mode: остановлен";
+        }
+
+        OnPropertyChanged(nameof(IsProcessModeRunning));
+        OnPropertyChanged(nameof(IsProcessModeEditingEnabled));
+        OnPropertyChanged(nameof(ProcessModeToggleLabel));
+        RelayCommand.RaiseAllCanExecuteChanged();
+    }
 
     private static bool ContainsIgnoreCase(IEnumerable<string> items, string value) =>
         items.Any(x => x.Equals(value, StringComparison.OrdinalIgnoreCase));
@@ -960,6 +1245,36 @@ public sealed class MainViewModel : ViewModelBase
         SettingsService.Save(_settings);
     }
 
+    private void SaveProcessModeSettings(bool isActive)
+    {
+        UpdateProcessModePreferences();
+
+        if (!string.IsNullOrWhiteSpace(ProcessModeLink))
+        {
+            _settings.ProcessModeLink = ProcessModeLink.Trim();
+        }
+
+        if (InputParser.TryParsePort(ProcessModePort, out var port, out _))
+        {
+            _settings.ProcessModePort = port;
+        }
+
+        _settings.IsProcessModeActive = isActive;
+        SettingsService.Save(_settings);
+    }
+
+    private void UpdateProcessModePreferences()
+    {
+        _settings.ProcessModeLink = ProcessModeLink.Trim();
+
+        if (InputParser.TryParsePort(ProcessModePort, out var port, out _))
+        {
+            _settings.ProcessModePort = port;
+        }
+
+        _settings.ProcessModeApplications = ProcessModeApplications.ToList();
+    }
+
     private void UpdateTunnelingPreferences()
     {
         var address = ProxyAddress.Trim();
@@ -989,6 +1304,7 @@ public sealed class MainViewModel : ViewModelBase
     {
         _settings.StartWithWindows = StartWithWindows;
         _settings.StartProxyWithApp = StartProxyWithApp;
+        _settings.StartProcessModeWithApp = StartProcessModeWithApp;
         _settings.StartMinimizedToTray = StartMinimizedToTray;
         _settings.NotifyOnMinimizeToTray = NotifyOnMinimizeToTray;
         _settings.UpdateListsOnStartup = UpdateListsOnStartup;
