@@ -122,9 +122,15 @@
 
                                 <Style.Triggers>
 
-                                    <DataTrigger Binding="{Binding IsProxyRunning}" Value="True">
+                                    <DataTrigger Binding="{Binding IsProxyHealthy}" Value="True">
 
                                         <Setter Property="Fill" Value="{StaticResource SuccessBrush}" />
+
+                                    </DataTrigger>
+
+                                    <DataTrigger Binding="{Binding IsProxyUnreachable}" Value="True">
+
+                                        <Setter Property="Fill" Value="{StaticResource DangerBrush}" />
 
                                     </DataTrigger>
 

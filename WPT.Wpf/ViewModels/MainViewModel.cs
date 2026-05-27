@@ -18,6 +18,12 @@ public sealed class MainViewModel : ViewModelBase
     private readonly AppSettings _settings = SettingsService.Load();
     private readonly HashSet<string> _selectedListIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly DispatcherTimer _dailyUpdateTimer;
+    private readonly DispatcherTimer _proxyHealthTimer;
+    private CancellationTokenSource? _proxyHealthCts;
+    private bool _isProxyHealthy;
+    private bool _isProxyUnreachable;
+    private bool _isProxyHealthChecking;
+    private int? _proxyPingMs;
 
     private string _proxyAddress = string.Empty;
     private string _pacPort = string.Empty;
@@ -88,6 +94,9 @@ public sealed class MainViewModel : ViewModelBase
             }
         };
         _dailyUpdateTimer.Start();
+
+        _proxyHealthTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
+        _proxyHealthTimer.Tick += async (_, _) => await RefreshProxyHealthAsync();
 
         LoadFromSettings();
     }
@@ -272,6 +281,10 @@ public sealed class MainViewModel : ViewModelBase
 
     public bool IsProxyRunning => _localProxyService.IsRunning;
 
+    public bool IsProxyHealthy => _isProxyHealthy;
+
+    public bool IsProxyUnreachable => _isProxyUnreachable;
+
     public bool IsProcessModeRunning => _processModeService.IsRunning;
 
     public bool IsProxyEditingEnabled => !IsProxyRunning && !IsBusy;
@@ -392,6 +405,7 @@ public sealed class MainViewModel : ViewModelBase
                 if (_localProxyService.IsRunning)
                 {
                     UpdateProxyUi();
+                    _ = RefreshProxyHealthAsync();
                 }
                 else
                 {
@@ -455,6 +469,7 @@ public sealed class MainViewModel : ViewModelBase
         {
             _localProxyService.Stop();
             SaveProxySettings(isActive: false);
+            ResetProxyHealth();
             UpdateProxyUi();
         }
         catch
@@ -562,6 +577,11 @@ public sealed class MainViewModel : ViewModelBase
         }
 
         UpdateProxyUi();
+        if (_localProxyService.IsRunning)
+        {
+            _ = RefreshProxyHealthAsync();
+        }
+
         UpdateProcessModeUi();
         RefreshPacState();
     }
@@ -986,6 +1006,7 @@ public sealed class MainViewModel : ViewModelBase
             SaveProxySettings(isActive: true);
             UpdateProxyUi();
             UpdateFooter();
+            _ = RefreshProxyHealthAsync();
 
             if (!silent)
             {
@@ -994,6 +1015,7 @@ public sealed class MainViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
+            ResetProxyHealth();
             UpdateProxyUi();
             if (!silent)
             {
@@ -1010,6 +1032,7 @@ public sealed class MainViewModel : ViewModelBase
     {
         _localProxyService.Stop();
         SaveProxySettings(isActive: false);
+        ResetProxyHealth();
         UpdateProxyUi();
         UpdateFooter();
     }
@@ -1017,15 +1040,116 @@ public sealed class MainViewModel : ViewModelBase
     private void UpdateProxyUi()
     {
         var isRunning = _localProxyService.IsRunning;
-        FooterProxyStatus = isRunning
-            ? $"Прокси: работает · {_localProxyService.LocalProxyAddress}"
-            : "Прокси: остановлен";
-        ProxyState = isRunning
-            ? $"Работает · {_localProxyService.LocalProxyAddress}"
-            : "Остановлен";
+        var address = _localProxyService.LocalProxyAddress;
+
+        if (!isRunning)
+        {
+            FooterProxyStatus = "Прокси: остановлен";
+            ProxyState = "Остановлен";
+        }
+        else if (_isProxyHealthChecking)
+        {
+            FooterProxyStatus = $"Прокси: проверка · {address}";
+            ProxyState = $"Проверка · {address}";
+        }
+        else if (_isProxyHealthy)
+        {
+            FooterProxyStatus = $"Прокси: работает · {_proxyPingMs} мс";
+            ProxyState = $"Работает · {address} · {_proxyPingMs} мс";
+        }
+        else if (_isProxyUnreachable)
+        {
+            FooterProxyStatus = $"Прокси: нет доступа";
+            ProxyState = $"Нет доступа · {address}";
+        }
+        else
+        {
+            FooterProxyStatus = $"Прокси: работает · {address}";
+            ProxyState = $"Работает · {address}";
+        }
+
         OnPropertyChanged(nameof(IsProxyRunning));
+        OnPropertyChanged(nameof(IsProxyHealthy));
+        OnPropertyChanged(nameof(IsProxyUnreachable));
         OnPropertyChanged(nameof(IsProxyEditingEnabled));
         OnPropertyChanged(nameof(ProxyToggleLabel));
+    }
+
+    private async Task RefreshProxyHealthAsync()
+    {
+        if (!_localProxyService.IsRunning || _localProxyService.LocalPort <= 0)
+        {
+            return;
+        }
+
+        _proxyHealthCts?.Cancel();
+        _proxyHealthCts?.Dispose();
+        _proxyHealthCts = new CancellationTokenSource();
+        var cancellationToken = _proxyHealthCts.Token;
+
+        SetProxyHealthState(isChecking: true, isHealthy: false, isUnreachable: false, pingMs: null);
+
+        try
+        {
+            var result = await ProxyHealthChecker.CheckAsync(_localProxyService.LocalPort, cancellationToken);
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            SetProxyHealthState(
+                isChecking: false,
+                isHealthy: result.IsReachable,
+                isUnreachable: !result.IsReachable,
+                pingMs: result.LatencyMs);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch
+        {
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                SetProxyHealthState(
+                    isChecking: false,
+                    isHealthy: false,
+                    isUnreachable: true,
+                    pingMs: null);
+            }
+        }
+    }
+
+    private void SetProxyHealthState(bool isChecking, bool isHealthy, bool isUnreachable, int? pingMs)
+    {
+        _isProxyHealthChecking = isChecking;
+        _isProxyHealthy = isHealthy;
+        _isProxyUnreachable = isUnreachable;
+        _proxyPingMs = pingMs;
+
+        if (_localProxyService.IsRunning && !isChecking)
+        {
+            _proxyHealthTimer.Start();
+        }
+        else if (!isChecking)
+        {
+            _proxyHealthTimer.Stop();
+        }
+
+        UpdateProxyUi();
+    }
+
+    private void ResetProxyHealth()
+    {
+        _proxyHealthCts?.Cancel();
+        _proxyHealthCts?.Dispose();
+        _proxyHealthCts = null;
+        _proxyHealthTimer.Stop();
+        _isProxyHealthChecking = false;
+        _isProxyHealthy = false;
+        _isProxyUnreachable = false;
+        _proxyPingMs = null;
+        OnPropertyChanged(nameof(IsProxyHealthy));
+        OnPropertyChanged(nameof(IsProxyUnreachable));
     }
 
     private async Task UpdateListsAsync(bool showWarningOnError = true, bool reEnableUi = true)
