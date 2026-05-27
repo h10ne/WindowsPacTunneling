@@ -46,27 +46,45 @@
 
         <Border Grid.Row="0" Grid.Column="0" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0">
 
-            <StackPanel Margin="0,16,0,0">
+            <Grid>
 
-                <TextBlock Text="{x:Static core:AppBranding.DisplayName}" FontWeight="SemiBold" FontSize="15" Margin="20,0,0,20" />
+                <Grid.RowDefinitions>
 
-                <RadioButton Content="Тунелирование" Style="{StaticResource NavButton}" GroupName="Nav"
+                    <RowDefinition Height="*" />
 
-                             IsChecked="{Binding IsTunnelingPage, Mode=TwoWay}" />
+                    <RowDefinition Height="Auto" />
 
-                <RadioButton Content="Прокси" Style="{StaticResource NavButton}" GroupName="Nav"
+                </Grid.RowDefinitions>
 
-                             IsChecked="{Binding IsProxyPage, Mode=TwoWay}" />
 
-                <RadioButton Content="Process Mode" Style="{StaticResource NavButton}" GroupName="Nav"
 
-                             IsChecked="{Binding IsProcessModePage, Mode=TwoWay}" />
+                <StackPanel Grid.Row="0" Margin="0,16,0,0">
 
-                <RadioButton Content="Настройки" Style="{StaticResource NavButton}" GroupName="Nav"
+                    <TextBlock Text="{x:Static core:AppBranding.DisplayName}" FontWeight="SemiBold" FontSize="15" Margin="20,0,0,20" />
 
-                             IsChecked="{Binding IsSettingsPage, Mode=TwoWay}" />
+                    <RadioButton Content="Тунелирование" Style="{StaticResource NavButton}" GroupName="Nav"
 
-            </StackPanel>
+                                 IsChecked="{Binding IsTunnelingPage, Mode=TwoWay}" />
+
+                    <RadioButton Content="Прокси" Style="{StaticResource NavButton}" GroupName="Nav"
+
+                                 IsChecked="{Binding IsProxyPage, Mode=TwoWay}" />
+
+                    <RadioButton Content="Process Mode" Style="{StaticResource NavButton}" GroupName="Nav"
+
+                                 IsChecked="{Binding IsProcessModePage, Mode=TwoWay}" />
+
+                    <RadioButton Content="Настройки" Style="{StaticResource NavButton}" GroupName="Nav"
+
+                                 IsChecked="{Binding IsSettingsPage, Mode=TwoWay}" />
+
+                </StackPanel>
+
+
+
+                <views:StatusIndicatorsView Grid.Row="1" DataContext="{Binding}" Margin="20,0,12,16" />
+
+            </Grid>
 
         </Border>
 
@@ -80,7 +98,7 @@
 
                                      Visibility="{Binding SelectedSection, Converter={StaticResource SectionVis}, ConverterParameter=0}" />
 
-                <views:ProxyView DataContext="{Binding}" HorizontalAlignment="Stretch" VerticalAlignment="Top"
+                <views:ProxyView DataContext="{Binding}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
 
                                  Visibility="{Binding SelectedSection, Converter={StaticResource SectionVis}, ConverterParameter=1}" />
 
@@ -88,7 +106,7 @@
 
                                        Visibility="{Binding SelectedSection, Converter={StaticResource SectionVis}, ConverterParameter=2}" />
 
-                <views:SettingsView DataContext="{Binding}" HorizontalAlignment="Stretch" VerticalAlignment="Top"
+                <views:SettingsView DataContext="{Binding}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
 
                                     Visibility="{Binding SelectedSection, Converter={StaticResource SectionVis}, ConverterParameter=3}" />
 
@@ -98,59 +116,7 @@
 
 
 
-        <Border Grid.Row="1" Grid.ColumnSpan="2" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="16,0">
-
-            <Grid>
-
-                <Grid.ColumnDefinitions>
-
-                    <ColumnDefinition Width="*" />
-
-                    <ColumnDefinition Width="Auto" />
-
-                </Grid.ColumnDefinitions>
-
-                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-
-                    <Ellipse Width="8" Height="8" VerticalAlignment="Center">
-
-                        <Ellipse.Style>
-
-                            <Style TargetType="Ellipse">
-
-                                <Setter Property="Fill" Value="#FF6B6B6E" />
-
-                                <Style.Triggers>
-
-                                    <DataTrigger Binding="{Binding IsProxyHealthy}" Value="True">
-
-                                        <Setter Property="Fill" Value="{StaticResource SuccessBrush}" />
-
-                                    </DataTrigger>
-
-                                    <DataTrigger Binding="{Binding IsProxyUnreachable}" Value="True">
-
-                                        <Setter Property="Fill" Value="{StaticResource DangerBrush}" />
-
-                                    </DataTrigger>
-
-                                </Style.Triggers>
-
-                            </Style>
-
-                        </Ellipse.Style>
-
-                    </Ellipse>
-
-                    <TextBlock Text="{Binding FooterProxyStatus}" VerticalAlignment="Center" Style="{StaticResource CaptionText}" Margin="8,0,0,0" />
-
-                </StackPanel>
-
-                <TextBlock Grid.Column="1" Text="{Binding FooterRight}" VerticalAlignment="Center" HorizontalAlignment="Right" Style="{StaticResource CaptionText}" />
-
-            </Grid>
-
-        </Border>
+        <Border Grid.Row="1" Grid.ColumnSpan="2" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="16,0" />
 
     </Grid>
 

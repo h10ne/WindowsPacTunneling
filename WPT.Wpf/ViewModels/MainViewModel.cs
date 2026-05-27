@@ -19,11 +19,17 @@ public sealed class MainViewModel : ViewModelBase
     private readonly HashSet<string> _selectedListIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly DispatcherTimer _dailyUpdateTimer;
     private readonly DispatcherTimer _proxyHealthTimer;
+    private readonly DispatcherTimer _processModeHealthTimer;
     private CancellationTokenSource? _proxyHealthCts;
+    private CancellationTokenSource? _processModeHealthCts;
     private bool _isProxyHealthy;
     private bool _isProxyUnreachable;
     private bool _isProxyHealthChecking;
     private int? _proxyPingMs;
+    private bool _isProcessModeHealthy;
+    private bool _isProcessModeUnreachable;
+    private bool _isProcessModeHealthChecking;
+    private int? _processModePingMs;
 
     private string _proxyAddress = string.Empty;
     private string _pacPort = string.Empty;
@@ -38,6 +44,7 @@ public sealed class MainViewModel : ViewModelBase
     private string _statusMessage = "Готово";
     private string _footerRight = "PAC: выкл";
     private string _footerProxyStatus = "Прокси: остановлен";
+    private string _footerProcessModeStatus = "PM: остановлен";
     private string _proxyState = "Прокси остановлен";
     private int _selectedSection;
     private bool _isBusy;
@@ -97,6 +104,9 @@ public sealed class MainViewModel : ViewModelBase
 
         _proxyHealthTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
         _proxyHealthTimer.Tick += async (_, _) => await RefreshProxyHealthAsync();
+
+        _processModeHealthTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+        _processModeHealthTimer.Tick += async (_, _) => await RefreshProcessModeHealthAsync();
 
         LoadFromSettings();
     }
@@ -247,6 +257,12 @@ public sealed class MainViewModel : ViewModelBase
         set => SetProperty(ref _footerProxyStatus, value);
     }
 
+    public string FooterProcessModeStatus
+    {
+        get => _footerProcessModeStatus;
+        set => SetProperty(ref _footerProcessModeStatus, value);
+    }
+
     public string ProxyState
     {
         get => _proxyState;
@@ -260,6 +276,8 @@ public sealed class MainViewModel : ViewModelBase
         {
             if (SetProperty(ref _isBusy, value))
             {
+                OnPropertyChanged(nameof(IsProxyEditingEnabled));
+                OnPropertyChanged(nameof(IsProcessModeEditingEnabled));
                 RelayCommand.RaiseAllCanExecuteChanged();
             }
         }
@@ -284,6 +302,10 @@ public sealed class MainViewModel : ViewModelBase
     public bool IsProxyHealthy => _isProxyHealthy;
 
     public bool IsProxyUnreachable => _isProxyUnreachable;
+
+    public bool IsProcessModeHealthy => _isProcessModeHealthy;
+
+    public bool IsProcessModeUnreachable => _isProcessModeUnreachable;
 
     public bool IsProcessModeRunning => _processModeService.IsRunning;
 
@@ -420,6 +442,7 @@ public sealed class MainViewModel : ViewModelBase
                 if (_processModeService.IsRunning)
                 {
                     UpdateProcessModeUi();
+                    _ = RefreshProcessModeHealthAsync();
                 }
                 else
                 {
@@ -483,6 +506,7 @@ public sealed class MainViewModel : ViewModelBase
         {
             _processModeService.Stop();
             SaveProcessModeSettings(isActive: false);
+            ResetProcessModeHealth();
             UpdateProcessModeUi();
         }
         catch
@@ -583,6 +607,11 @@ public sealed class MainViewModel : ViewModelBase
         }
 
         UpdateProcessModeUi();
+        if (_processModeService.IsRunning)
+        {
+            _ = RefreshProcessModeHealthAsync();
+        }
+
         RefreshPacState();
     }
 
@@ -827,6 +856,7 @@ public sealed class MainViewModel : ViewModelBase
 
             SaveProcessModeSettings(isActive: true);
             UpdateProcessModeUi();
+            _ = RefreshProcessModeHealthAsync(showCheckingState: false);
 
             if (!silent)
             {
@@ -902,6 +932,7 @@ public sealed class MainViewModel : ViewModelBase
 
             SaveProcessModeSettings(isActive: true);
             UpdateProcessModeUi();
+            _ = RefreshProcessModeHealthAsync(showCheckingState: true);
 
             if (!silent)
             {
@@ -926,6 +957,7 @@ public sealed class MainViewModel : ViewModelBase
     {
         _processModeService.Stop();
         SaveProcessModeSettings(isActive: false);
+        ResetProcessModeHealth();
         UpdateProcessModeUi();
         StatusMessage = "Process Mode остановлен";
     }
@@ -933,20 +965,44 @@ public sealed class MainViewModel : ViewModelBase
     private void UpdateProcessModeUi()
     {
         var isRunning = _processModeService.IsRunning;
-        if (isRunning)
+        var address = _processModeService.LocalProxyAddress;
+
+        if (!isRunning)
         {
-            var apps = ProcessModeApplications.Count;
+            FooterProcessModeStatus = "PM: остановлен";
+            ProcessModeStatus = "Process Mode: остановлен";
+        }
+        else if (_isProcessModeHealthChecking && _processModePingMs == null)
+        {
+            FooterProcessModeStatus = "PM: проверка";
             ProcessModeStatus =
-                $"Process Mode: работает · {_processModeService.LocalProxyAddress} · Redirector · {apps} прилож.";
+                $"Process Mode: работает · {address} · Redirector · {ProcessModeApplications.Count} прилож.";
+        }
+        else if (_isProcessModeHealthy)
+        {
+            FooterProcessModeStatus = $"PM: работает · {_processModePingMs} мс";
+            ProcessModeStatus =
+                $"Process Mode: работает · {address} · Redirector · {ProcessModeApplications.Count} прилож. · {_processModePingMs} мс";
+        }
+        else if (_isProcessModeUnreachable)
+        {
+            FooterProcessModeStatus = "PM: нет доступа";
+            ProcessModeStatus =
+                $"Process Mode: нет доступа · {address} · Redirector · {ProcessModeApplications.Count} прилож.";
         }
         else
         {
-            ProcessModeStatus = "Process Mode: остановлен";
+            var apps = ProcessModeApplications.Count;
+            FooterProcessModeStatus = "PM: работает";
+            ProcessModeStatus =
+                $"Process Mode: работает · {address} · Redirector · {apps} прилож.";
         }
 
         OnPropertyChanged(nameof(IsProcessModeRunning));
         OnPropertyChanged(nameof(IsProcessModeEditingEnabled));
         OnPropertyChanged(nameof(ProcessModeToggleLabel));
+        OnPropertyChanged(nameof(IsProcessModeHealthy));
+        OnPropertyChanged(nameof(IsProcessModeUnreachable));
         RelayCommand.RaiseAllCanExecuteChanged();
     }
 
@@ -1049,7 +1105,7 @@ public sealed class MainViewModel : ViewModelBase
         }
         else if (_isProxyHealthChecking)
         {
-            FooterProxyStatus = $"Прокси: проверка · {address}";
+            FooterProxyStatus = $"Прокси: проверка ·";
             ProxyState = $"Проверка · {address}";
         }
         else if (_isProxyHealthy)
@@ -1150,6 +1206,87 @@ public sealed class MainViewModel : ViewModelBase
         _proxyPingMs = null;
         OnPropertyChanged(nameof(IsProxyHealthy));
         OnPropertyChanged(nameof(IsProxyUnreachable));
+    }
+
+    private async Task RefreshProcessModeHealthAsync(bool showCheckingState = false)
+    {
+        if (!_processModeService.IsRunning || _processModeService.LocalPort <= 0)
+        {
+            return;
+        }
+
+        _processModeHealthCts?.Cancel();
+        _processModeHealthCts?.Dispose();
+        _processModeHealthCts = new CancellationTokenSource();
+        var cancellationToken = _processModeHealthCts.Token;
+
+        if (showCheckingState)
+        {
+            _isProcessModeHealthChecking = true;
+            UpdateProcessModeUi();
+        }
+
+        try
+        {
+            var result = await ProxyHealthChecker.CheckAsync(_processModeService.LocalPort, cancellationToken);
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            ApplyProcessModeHealthResult(result);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch
+        {
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                ApplyProcessModeHealthResult(new ProxyHealthResult(false, null));
+            }
+        }
+        finally
+        {
+            if (showCheckingState && cancellationToken.IsCancellationRequested)
+            {
+                _isProcessModeHealthChecking = false;
+                UpdateProcessModeUi();
+            }
+        }
+    }
+
+    private void ApplyProcessModeHealthResult(ProxyHealthResult result)
+    {
+        _isProcessModeHealthChecking = false;
+        _isProcessModeHealthy = result.IsReachable;
+        _isProcessModeUnreachable = !result.IsReachable;
+        _processModePingMs = result.LatencyMs;
+
+        if (_processModeService.IsRunning)
+        {
+            _processModeHealthTimer.Start();
+        }
+        else
+        {
+            _processModeHealthTimer.Stop();
+        }
+
+        UpdateProcessModeUi();
+    }
+
+    private void ResetProcessModeHealth()
+    {
+        _processModeHealthCts?.Cancel();
+        _processModeHealthCts?.Dispose();
+        _processModeHealthCts = null;
+        _processModeHealthTimer.Stop();
+        _isProcessModeHealthChecking = false;
+        _isProcessModeHealthy = false;
+        _isProcessModeUnreachable = false;
+        _processModePingMs = null;
+        OnPropertyChanged(nameof(IsProcessModeHealthy));
+        OnPropertyChanged(nameof(IsProcessModeUnreachable));
     }
 
     private async Task UpdateListsAsync(bool showWarningOnError = true, bool reEnableUi = true)
@@ -1508,30 +1645,6 @@ public sealed class MainViewModel : ViewModelBase
 
     private void UpdateFooter()
     {
-        var systemEnabled = WindowsProxySettings.IsPacEnabled(out var pacUrl);
-        if (systemEnabled)
-        {
-            var portLabel = TryExtractPortFromPacUrl(pacUrl) ?? PacPort;
-            FooterRight = $"PAC: вкл · порт {portLabel}";
-        }
-        else
-        {
-            FooterRight = "PAC: выкл";
-        }
-    }
-
-    private static string? TryExtractPortFromPacUrl(string? pacUrl)
-    {
-        if (string.IsNullOrWhiteSpace(pacUrl))
-        {
-            return null;
-        }
-
-        if (!Uri.TryCreate(pacUrl, UriKind.Absolute, out var uri))
-        {
-            return null;
-        }
-
-        return uri.Port.ToString();
+        FooterRight = WindowsProxySettings.IsPacEnabled(out _) ? "PAC: вкл" : "PAC: выкл";
     }
 }
