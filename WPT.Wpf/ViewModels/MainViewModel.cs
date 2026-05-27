@@ -399,7 +399,7 @@ public sealed class MainViewModel : ViewModelBase
                 }
             }
 
-            if (StartProcessModeWithApp
+            if (_settings.IsProcessModeActive
                 && !string.IsNullOrWhiteSpace(_settings.ProcessModeLink)
                 && ProcessModeApplications.Count > 0)
             {
@@ -409,8 +409,14 @@ public sealed class MainViewModel : ViewModelBase
                 }
                 else
                 {
-                    await StartProcessModeAsync(silent: true);
+                    await RestoreProcessModeAsync(silent: true);
                 }
+            }
+            else if (StartProcessModeWithApp
+                && !string.IsNullOrWhiteSpace(_settings.ProcessModeLink)
+                && ProcessModeApplications.Count > 0)
+            {
+                await StartProcessModeAsync(silent: true);
             }
 
             if (StartProxyWithApp && _settings.IsProxyActive)
@@ -753,6 +759,72 @@ public sealed class MainViewModel : ViewModelBase
         }
 
         await StartProcessModeAsync();
+    }
+
+    private async Task RestoreProcessModeAsync(bool silent = false)
+    {
+        if (_processModeService.IsRunning)
+        {
+            return;
+        }
+
+        if (ProcessModeApplications.Count == 0)
+        {
+            return;
+        }
+
+        if (!ProxyLinkParser.TryParse(ProcessModeLink, out var profile, out var parseError))
+        {
+            if (!silent)
+            {
+                MessageBox.Show(parseError, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+
+            return;
+        }
+
+        if (!InputParser.TryParsePort(ProcessModePort, out var localPort, out var portError))
+        {
+            if (!silent)
+            {
+                MessageBox.Show(portError, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+
+            return;
+        }
+
+        IsBusy = true;
+
+        try
+        {
+            var progress = new Progress<string>(message => ProcessModeStatus = message);
+            await _processModeService.TryRestoreAsync(
+                profile,
+                localPort,
+                ProcessModeApplications.ToList(),
+                progress,
+                CancellationToken.None);
+
+            SaveProcessModeSettings(isActive: true);
+            UpdateProcessModeUi();
+
+            if (!silent)
+            {
+                StatusMessage = $"Process Mode восстановлен: {_processModeService.LocalProxyAddress}";
+            }
+        }
+        catch (Exception ex)
+        {
+            UpdateProcessModeUi();
+            if (!silent)
+            {
+                MessageBox.Show(ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     private async Task StartProcessModeAsync(bool silent = false)
