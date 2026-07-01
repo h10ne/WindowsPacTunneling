@@ -745,8 +745,8 @@ public sealed class MainViewModel : ViewModelBase
 
     public async Task InitializeAsync()
     {
-        _ = CheckAppUpdateAsync(silent: true);
         IsBusy = true;
+        await CheckAppUpdateAsync(silent: true);
         SetFooterLog("Инициализация приложения...");
 
         try
@@ -1984,14 +1984,14 @@ public sealed class MainViewModel : ViewModelBase
                 SetFooterLog(result.Message);
             }
         }
-        catch
+        catch (Exception ex)
         {
             IsAppUpdateAvailable = false;
-            AppUpdateStatus = $"Текущая версия: {AppVersionLabel}.";
+            AppUpdateStatus = $"Не удалось проверить обновления. Текущая версия: {AppVersionLabel}.";
 
             if (!silent)
             {
-                SetFooterLog("Не удалось проверить обновления приложения.");
+                SetFooterLog($"Не удалось проверить обновления приложения: {ex.Message}");
             }
         }
     }

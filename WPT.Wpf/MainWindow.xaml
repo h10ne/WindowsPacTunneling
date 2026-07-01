@@ -22,8 +22,6 @@
 
         <conv:SectionToVisibilityConverter x:Key="SectionVis" />
 
-        <conv:BoolToVisibilityConverter x:Key="BoolVis" />
-
     </Window.Resources>
 
     <Grid>
@@ -84,19 +82,7 @@
 
 
 
-                <StackPanel Grid.Row="1" Margin="20,0,12,16" VerticalAlignment="Bottom">
-
-                    <views:StatusIndicatorsView DataContext="{Binding}" />
-
-                    <Button Content="Доступно обновление" Style="{StaticResource SecondaryButton}"
-
-                            Command="{Binding OpenSettingsForUpdateCommand}" Margin="0,12,0,0"
-
-                            HorizontalAlignment="Left" MinWidth="180"
-
-                            Visibility="{Binding IsAppUpdateAvailable, Converter={StaticResource BoolVis}}" />
-
-                </StackPanel>
+                <views:StatusIndicatorsView Grid.Row="1" DataContext="{Binding}" Margin="20,0,12,16" VerticalAlignment="Bottom" />
 
             </Grid>
 
