@@ -66,6 +66,10 @@ public sealed class MainViewModel : ViewModelBase
     private bool _startMinimizedToTray;
     private bool _zapretUpdateAvailable;
     private string _zapretUpdateStatus = "Нажмите «Проверить обновления», чтобы узнать актуальность zapret.";
+    private bool _isAppUpdateAvailable;
+    private string _appUpdateStatus = string.Empty;
+    private string _latestAppVersionLabel = string.Empty;
+    private readonly string _appVersionLabel = AppVersion.CurrentLabel;
     private bool _notifyOnMinimizeToTray;
     private bool _updateListsOnStartup;
     private bool _routeAllTrafficThroughProxy;
@@ -132,6 +136,9 @@ public sealed class MainViewModel : ViewModelBase
         RestartAsAdminCommand = new RelayCommand(RestartAsAdmin, () => IsRestartAsAdminEnabled && !IsBusy);
         CheckZapretUpdateCommand = new RelayCommand(async () => await CheckZapretUpdateAsync(), () => !IsBusy);
         DownloadZapretUpdateCommand = new RelayCommand(async () => await DownloadZapretUpdateAsync(), () => !IsBusy && CanDownloadZapretUpdate);
+        InstallAppUpdateCommand = new RelayCommand(async () => await InstallAppUpdateAsync(), () => !IsBusy && IsAppUpdateAvailable);
+        OpenSettingsForUpdateCommand = new RelayCommand(OpenSettingsForUpdate);
+        AppUpdateStatus = $"Текущая версия: {AppVersionLabel}.";
 
         _domainListService.StatusChanged += (_, message) => SetFooterLog(message);
 
@@ -640,6 +647,26 @@ public sealed class MainViewModel : ViewModelBase
         }
     }
 
+    public string AppVersionLabel => _appVersionLabel;
+
+    public string AppUpdateStatus
+    {
+        get => _appUpdateStatus;
+        private set => SetProperty(ref _appUpdateStatus, value);
+    }
+
+    public bool IsAppUpdateAvailable
+    {
+        get => _isAppUpdateAvailable;
+        private set
+        {
+            if (SetProperty(ref _isAppUpdateAvailable, value))
+            {
+                RelayCommand.RaiseAllCanExecuteChanged();
+            }
+        }
+    }
+
     public bool RouteAllTrafficThroughProxy
     {
         get => _routeAllTrafficThroughProxy;
@@ -712,8 +739,13 @@ public sealed class MainViewModel : ViewModelBase
 
     public RelayCommand DownloadZapretUpdateCommand { get; }
 
+    public RelayCommand InstallAppUpdateCommand { get; }
+
+    public RelayCommand OpenSettingsForUpdateCommand { get; }
+
     public async Task InitializeAsync()
     {
+        _ = CheckAppUpdateAsync(silent: true);
         IsBusy = true;
         SetFooterLog("Инициализация приложения...");
 
@@ -853,6 +885,17 @@ public sealed class MainViewModel : ViewModelBase
 
     public void Shutdown()
     {
+        StopServicesForUpdate();
+
+        _domainListService.Dispose();
+        _pacHttpServer.Dispose();
+        _localProxyService.Dispose();
+        _processModeService.Dispose();
+        _bypassService.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+
+    private void StopServicesForUpdate()
+    {
         try
         {
             _pacHttpServer.Stop();
@@ -864,12 +907,6 @@ public sealed class MainViewModel : ViewModelBase
         catch
         {
         }
-
-        _domainListService.Dispose();
-        _pacHttpServer.Dispose();
-        _localProxyService.Dispose();
-        _processModeService.Dispose();
-        _bypassService.DisposeAsync().AsTask().GetAwaiter().GetResult();
     }
 
     private void LoadFromSettings()
@@ -1926,6 +1963,88 @@ public sealed class MainViewModel : ViewModelBase
             FileName = AppPaths.Root,
             UseShellExecute = true
         });
+    }
+
+    private void OpenSettingsForUpdate()
+    {
+        SelectedSection = 3;
+    }
+
+    private async Task CheckAppUpdateAsync(bool silent)
+    {
+        try
+        {
+            var result = await AppUpdateService.CheckForUpdateAsync();
+            IsAppUpdateAvailable = result.UpdateAvailable;
+            _latestAppVersionLabel = result.LatestVersionLabel;
+            AppUpdateStatus = result.Message;
+
+            if (!silent && result.UpdateAvailable)
+            {
+                SetFooterLog(result.Message);
+            }
+        }
+        catch
+        {
+            IsAppUpdateAvailable = false;
+            AppUpdateStatus = $"Текущая версия: {AppVersionLabel}.";
+
+            if (!silent)
+            {
+                SetFooterLog("Не удалось проверить обновления приложения.");
+            }
+        }
+    }
+
+    private async Task InstallAppUpdateAsync()
+    {
+        if (!IsAppUpdateAvailable)
+        {
+            return;
+        }
+
+        var latestLabel = string.IsNullOrWhiteSpace(_latestAppVersionLabel)
+            ? "новой версии"
+            : _latestAppVersionLabel;
+        var confirm = MessageBox.Show(
+            $"Установить обновление до {latestLabel}? Приложение будет перезапущено.",
+            "Обновление",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+
+        if (confirm != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        IsBusy = true;
+
+        try
+        {
+            SetFooterLog("Скачивание обновления...");
+
+            var progress = new Progress<string>(message =>
+            {
+                AppUpdateStatus = message;
+                SetFooterLog(message);
+            });
+            var downloadPath = await AppUpdateService.DownloadLatestReleaseAsync(progress, CancellationToken.None);
+            var targetPath = AppUpdateService.GetCurrentExecutablePath()
+                ?? throw new InvalidOperationException("Не удалось определить путь к приложению.");
+
+            SetFooterLog("Подготовка к обновлению...");
+            StopServicesForUpdate();
+            AppUpdateService.LaunchUpdaterAndExit(downloadPath, targetPath, _settings.RunAsAdministrator);
+            Shutdown();
+            System.Windows.Application.Current.Shutdown(0);
+        }
+        catch (Exception ex)
+        {
+            var message = ex.InnerException?.Message ?? ex.Message;
+            AppUpdateStatus = $"Ошибка обновления: {message}";
+            SetFooterLog(AppUpdateStatus);
+            IsBusy = false;
+        }
     }
 
     private void RestartAsAdmin()

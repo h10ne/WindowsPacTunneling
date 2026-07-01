@@ -22,6 +22,8 @@
 
         <conv:SectionToVisibilityConverter x:Key="SectionVis" />
 
+        <conv:BoolToVisibilityConverter x:Key="BoolVis" />
+
     </Window.Resources>
 
     <Grid>
@@ -82,7 +84,19 @@
 
 
 
-                <views:StatusIndicatorsView Grid.Row="1" DataContext="{Binding}" Margin="20,0,12,16" />
+                <StackPanel Grid.Row="1" Margin="20,0,12,16" VerticalAlignment="Bottom">
+
+                    <views:StatusIndicatorsView DataContext="{Binding}" />
+
+                    <Button Content="Доступно обновление" Style="{StaticResource SecondaryButton}"
+
+                            Command="{Binding OpenSettingsForUpdateCommand}" Margin="0,12,0,0"
+
+                            HorizontalAlignment="Left" MinWidth="180"
+
+                            Visibility="{Binding IsAppUpdateAvailable, Converter={StaticResource BoolVis}}" />
+
+                </StackPanel>
 
             </Grid>
 
@@ -118,9 +132,25 @@
 
         <Border Grid.Row="1" Grid.ColumnSpan="2" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="16,0">
 
-            <TextBlock Text="{Binding FooterLog}" Style="{StaticResource CaptionText}" VerticalAlignment="Center"
+            <Grid>
 
-                       TextTrimming="CharacterEllipsis" ToolTip="{Binding FooterLog}" />
+                <Grid.ColumnDefinitions>
+
+                    <ColumnDefinition Width="*" />
+
+                    <ColumnDefinition Width="Auto" />
+
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0" Text="{Binding FooterLog}" Style="{StaticResource CaptionText}" VerticalAlignment="Center"
+
+                           TextTrimming="CharacterEllipsis" ToolTip="{Binding FooterLog}" />
+
+                <TextBlock Grid.Column="1" Text="{Binding AppVersionLabel}" Style="{StaticResource CaptionText}"
+
+                           VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" Margin="16,0,0,0" />
+
+            </Grid>
 
         </Border>
 

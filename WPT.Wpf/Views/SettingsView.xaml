@@ -62,6 +62,15 @@
 
 
 
+                <TextBlock Text="Приложение" Style="{StaticResource SectionTitle}" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,16,0,8" />
+
+                <TextBlock Text="{Binding AppUpdateStatus}" Style="{StaticResource CaptionText}" TextWrapping="Wrap" Margin="0,0,0,8" />
+
+                <Button Content="Обновить" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left"
+
+                        Command="{Binding InstallAppUpdateCommand}" MinWidth="180" />
+
+
                 <TextBlock Text="Zapret" Style="{StaticResource SectionTitle}" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,16,0,8" />
 
                 <TextBlock Text="{Binding ZapretUpdateStatus}" Style="{StaticResource CaptionText}" TextWrapping="Wrap" Margin="0,0,0,8" />
