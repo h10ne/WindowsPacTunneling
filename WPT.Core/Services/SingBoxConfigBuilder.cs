@@ -36,6 +36,55 @@ public static class SingBoxConfigBuilder
         return root.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
     }
 
+    public static string BuildForProcessMode(ProxyProfile profile, int localPort)
+    {
+        var root = new JsonObject
+        {
+            ["log"] = new JsonObject { ["level"] = "warn" },
+            ["dns"] = new JsonObject
+            {
+                ["servers"] = new JsonArray
+                {
+                    new JsonObject
+                    {
+                        ["tag"] = "local",
+                        ["type"] = "local"
+                    },
+                    new JsonObject
+                    {
+                        ["tag"] = "remote",
+                        ["type"] = "udp",
+                        ["server"] = "8.8.8.8"
+                    }
+                },
+                ["final"] = "remote"
+            },
+            ["inbounds"] = new JsonArray
+            {
+                new JsonObject
+                {
+                    ["type"] = "socks",
+                    ["tag"] = "socks-in",
+                    ["listen"] = "127.0.0.1",
+                    ["listen_port"] = localPort,
+                    ["udp_timeout"] = "5m"
+                }
+            },
+            ["outbounds"] = new JsonArray
+            {
+                BuildOutbound(profile),
+                new JsonObject { ["type"] = "direct", ["tag"] = "direct" }
+            },
+            ["route"] = new JsonObject
+            {
+                ["final"] = "proxy",
+                ["auto_detect_interface"] = false
+            }
+        };
+
+        return root.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+    }
+
     private static JsonObject BuildOutbound(ProxyProfile profile) =>
         profile.Protocol switch
         {

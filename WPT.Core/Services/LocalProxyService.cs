@@ -10,9 +10,11 @@ public sealed class LocalProxyService : IDisposable
     private readonly object _sync = new();
     private readonly string _configPath;
     private readonly string _pidPath;
+    private readonly bool _forProcessMode;
 
     public LocalProxyService(string? instanceName = null)
     {
+        _forProcessMode = string.Equals(instanceName, "processmode", StringComparison.OrdinalIgnoreCase);
         if (string.IsNullOrWhiteSpace(instanceName))
         {
             _configPath = AppPaths.SingBoxConfigFile;
@@ -74,7 +76,9 @@ public sealed class LocalProxyService : IDisposable
 
         AppPaths.EnsureRoot();
         var configPath = _configPath;
-        var config = SingBoxConfigBuilder.Build(profile, localPort);
+        var config = _forProcessMode
+            ? SingBoxConfigBuilder.BuildForProcessMode(profile, localPort)
+            : SingBoxConfigBuilder.Build(profile, localPort);
         await File.WriteAllTextAsync(configPath, config, cancellationToken);
 
         var psi = new ProcessStartInfo

@@ -48,44 +48,6 @@
 
         </StackPanel>
 
-        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-
-            <Ellipse Width="8" Height="8" VerticalAlignment="Center">
-
-                <Ellipse.Style>
-
-                    <Style TargetType="Ellipse">
-
-                        <Setter Property="Fill" Value="#FF6B6B6E" />
-
-                        <Style.Triggers>
-
-                            <DataTrigger Binding="{Binding IsProcessModeHealthy}" Value="True">
-
-                                <Setter Property="Fill" Value="{StaticResource SuccessBrush}" />
-
-                            </DataTrigger>
-
-                            <DataTrigger Binding="{Binding IsProcessModeUnreachable}" Value="True">
-
-                                <Setter Property="Fill" Value="{StaticResource DangerBrush}" />
-
-                            </DataTrigger>
-
-                        </Style.Triggers>
-
-                    </Style>
-
-                </Ellipse.Style>
-
-            </Ellipse>
-
-            <TextBlock Text="{Binding FooterProcessModeStatus}" VerticalAlignment="Center" Style="{StaticResource CaptionText}"
-
-                       Margin="8,0,0,0" TextTrimming="CharacterEllipsis" />
-
-        </StackPanel>
-
         <StackPanel Orientation="Horizontal">
 
             <Ellipse Width="8" Height="8" VerticalAlignment="Center">

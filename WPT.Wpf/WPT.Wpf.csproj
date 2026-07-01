@@ -27,6 +27,10 @@
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
             <Link>ThirdParty\Netch\%(RecursiveDir)%(Filename)%(Extension)</Link>
         </None>
+        <None Include="..\WPT.Core\ThirdParty\AmneziaBox\**\*">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <Link>ThirdParty\AmneziaBox\%(RecursiveDir)%(Filename)%(Extension)</Link>
+        </None>
     </ItemGroup>
 
 </Project>

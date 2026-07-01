@@ -23,6 +23,23 @@ public static class AppPaths
     public static string SingBoxPidFileFor(string instanceName) =>
         Path.Combine(Root, $"sing-box-{instanceName}.pid");
 
+    public static string WireGuardConfigFileFor(string instanceName) =>
+        Path.Combine(Root, $"wg-{instanceName}.conf");
+
+    public static string AwgProxyConfigFileFor(string instanceName) =>
+        Path.Combine(Root, $"awgproxy-{instanceName}.conf");
+
+    public static string AwgProxyPidFileFor(string instanceName) =>
+        Path.Combine(Root, $"awgproxy-{instanceName}.pid");
+
+    public static string AmneziaBoxConfigFileFor(string instanceName) =>
+        Path.Combine(Root, $"amnezia-box-{instanceName}.json");
+
+    public static string AmneziaBoxPidFileFor(string instanceName) =>
+        Path.Combine(Root, $"amnezia-box-{instanceName}.pid");
+
+    public static string ProcessModeAmneziaConfigFile => Path.Combine(Root, "amnezia-processmode.conf");
+
     public static string RedirectorBinary => Path.Combine(BinDirectory, "Redirector.bin");
 
     public static string RedirectorApiDll => Path.Combine(BinDirectory, "nfapi.dll");

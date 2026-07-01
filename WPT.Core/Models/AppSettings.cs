@@ -44,6 +44,10 @@ public sealed class AppSettings
 
     public string ProcessModeLink { get; set; } = string.Empty;
 
+    public string ProcessModeAmneziaSourceName { get; set; } = string.Empty;
+
+    public ProcessModeConnectionType ProcessModeConnectionType { get; set; }
+
     public int ProcessModePort { get; set; } = 20808;
 
     public List<string> ProcessModeApplications { get; set; } = [];

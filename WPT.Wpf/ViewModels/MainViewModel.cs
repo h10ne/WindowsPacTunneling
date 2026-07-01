@@ -1,11 +1,13 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Windows.Threading;
+using WPT.Core;
 using WPT.Core.Models;
 using WPT.Core.Services;
 using MessageBox = System.Windows.MessageBox;
 using MessageBoxButton = System.Windows.MessageBoxButton;
 using MessageBoxImage = System.Windows.MessageBoxImage;
+using MessageBoxResult = System.Windows.MessageBoxResult;
 
 namespace WPT.Wpf.ViewModels;
 
@@ -28,6 +30,7 @@ public sealed class MainViewModel : ViewModelBase
     private int? _proxyPingMs;
     private bool _isProcessModeHealthy;
     private bool _isProcessModeUnreachable;
+    private bool _isProcessModeUdpSupported = true;
     private bool _isProcessModeHealthChecking;
     private int? _processModePingMs;
 
@@ -36,6 +39,10 @@ public sealed class MainViewModel : ViewModelBase
     private string _proxyLink = string.Empty;
     private string _localPort = string.Empty;
     private string _processModeLink = string.Empty;
+    private string _processModeAmneziaEndpoint = string.Empty;
+    private string _processModeAmneziaSourceName = string.Empty;
+    private bool _hasProcessModeAmneziaConfig;
+    private ProcessModeConnectionType _processModeConnectionType;
     private string _processModePort = string.Empty;
     private string _newProcessModeApp = string.Empty;
     private string _processModeStatus = "Process Mode: остановлен";
@@ -64,6 +71,19 @@ public sealed class MainViewModel : ViewModelBase
         CustomDomains = [];
         CustomIps = [];
         ProcessModeApplications = [];
+        ProcessModeConnectionTypes =
+        [
+            new ProcessModeConnectionTypeOption
+            {
+                Value = ProcessModeConnectionType.Shadowsocks,
+                DisplayName = "Shadowsocks (ss://)"
+            },
+            new ProcessModeConnectionTypeOption
+            {
+                Value = ProcessModeConnectionType.Amnezia,
+                DisplayName = "Amnezia (.conf)"
+            }
+        ];
         ProxyHistory = [];
         PacPortHistory = [];
         AvailableLists = [.. ServiceListDefinition.All];
@@ -83,6 +103,8 @@ public sealed class MainViewModel : ViewModelBase
         AddProcessModeAppCommand = new RelayCommand(AddProcessModeApp);
         RemoveProcessModeAppCommand = new RelayCommand(p => RemoveProcessModeApp((string)p!));
         PickRunningProcessCommand = new RelayCommand(_ => { });
+        PickAmneziaConfigCommand = new RelayCommand(PickAmneziaConfigFile, () => IsProcessModeEditingEnabled);
+        ClearAmneziaConfigCommand = new RelayCommand(ClearAmneziaConfig, () => IsProcessModeEditingEnabled && HasProcessModeAmneziaConfig);
         UpdateListsCommand = new RelayCommand(async () => await UpdateListsAsync());
         SaveSettingsCommand = new RelayCommand(SaveAppSettings);
         OpenDataFolderCommand = new RelayCommand(OpenDataFolder);
@@ -119,6 +141,8 @@ public sealed class MainViewModel : ViewModelBase
 
     public ObservableCollection<string> ProcessModeApplications { get; }
 
+    public IReadOnlyList<ProcessModeConnectionTypeOption> ProcessModeConnectionTypes { get; }
+
     public ObservableCollection<string> ProxyHistory { get; }
 
     public ObservableCollection<string> PacPortHistory { get; }
@@ -154,6 +178,49 @@ public sealed class MainViewModel : ViewModelBase
         get => _processModeLink;
         set => SetProperty(ref _processModeLink, value);
     }
+
+    public string ProcessModeAmneziaEndpoint
+    {
+        get => _processModeAmneziaEndpoint;
+        private set => SetProperty(ref _processModeAmneziaEndpoint, value);
+    }
+
+    public string ProcessModeAmneziaSourceName
+    {
+        get => _processModeAmneziaSourceName;
+        private set => SetProperty(ref _processModeAmneziaSourceName, value);
+    }
+
+    public bool HasProcessModeAmneziaConfig
+    {
+        get => _hasProcessModeAmneziaConfig;
+        private set
+        {
+            if (SetProperty(ref _hasProcessModeAmneziaConfig, value))
+            {
+                OnPropertyChanged(nameof(IsProcessModeAmneziaDropHintVisible));
+            }
+        }
+    }
+
+    public bool IsProcessModeAmneziaDropHintVisible => !HasProcessModeAmneziaConfig;
+
+    public ProcessModeConnectionType ProcessModeConnectionType
+    {
+        get => _processModeConnectionType;
+        set
+        {
+            if (SetProperty(ref _processModeConnectionType, value))
+            {
+                OnPropertyChanged(nameof(IsProcessModeSsSelected));
+                OnPropertyChanged(nameof(IsProcessModeAmneziaSelected));
+            }
+        }
+    }
+
+    public bool IsProcessModeSsSelected => ProcessModeConnectionType == ProcessModeConnectionType.Shadowsocks;
+
+    public bool IsProcessModeAmneziaSelected => ProcessModeConnectionType == ProcessModeConnectionType.Amnezia;
 
     public string ProcessModePort
     {
@@ -210,7 +277,6 @@ public sealed class MainViewModel : ViewModelBase
 
             OnPropertyChanged(nameof(IsTunnelingPage));
             OnPropertyChanged(nameof(IsProxyPage));
-            OnPropertyChanged(nameof(IsProcessModePage));
             OnPropertyChanged(nameof(IsSettingsPage));
         }
     }
@@ -227,16 +293,10 @@ public sealed class MainViewModel : ViewModelBase
         set { if (value) SelectedSection = 1; }
     }
 
-    public bool IsProcessModePage
+    public bool IsSettingsPage
     {
         get => SelectedSection == 2;
         set { if (value) SelectedSection = 2; }
-    }
-
-    public bool IsSettingsPage
-    {
-        get => SelectedSection == 3;
-        set { if (value) SelectedSection = 3; }
     }
 
     public string StatusMessage
@@ -405,6 +465,10 @@ public sealed class MainViewModel : ViewModelBase
 
     public RelayCommand PickRunningProcessCommand { get; }
 
+    public RelayCommand PickAmneziaConfigCommand { get; }
+
+    public RelayCommand ClearAmneziaConfigCommand { get; }
+
     public RelayCommand UpdateListsCommand { get; }
 
     public RelayCommand SaveSettingsCommand { get; }
@@ -435,8 +499,9 @@ public sealed class MainViewModel : ViewModelBase
                 }
             }
 
-            if (_settings.IsProcessModeActive
-                && !string.IsNullOrWhiteSpace(_settings.ProcessModeLink)
+            if (AppBranding.IsProcessModeUiVisible
+                && _settings.IsProcessModeActive
+                && HasProcessModeConfig()
                 && ProcessModeApplications.Count > 0)
             {
                 if (_processModeService.IsRunning)
@@ -449,8 +514,9 @@ public sealed class MainViewModel : ViewModelBase
                     await RestoreProcessModeAsync(silent: true);
                 }
             }
-            else if (StartProcessModeWithApp
-                && !string.IsNullOrWhiteSpace(_settings.ProcessModeLink)
+            else if (AppBranding.IsProcessModeUiVisible
+                && StartProcessModeWithApp
+                && HasProcessModeConfig()
                 && ProcessModeApplications.Count > 0)
             {
                 await StartProcessModeAsync(silent: true);
@@ -576,7 +642,7 @@ public sealed class MainViewModel : ViewModelBase
 
         StartWithWindows = _settings.StartWithWindows;
         StartProxyWithApp = _settings.StartProxyWithApp;
-        StartProcessModeWithApp = _settings.StartProcessModeWithApp;
+        StartProcessModeWithApp = AppBranding.IsProcessModeUiVisible && _settings.StartProcessModeWithApp;
         StartMinimizedToTray = _settings.StartMinimizedToTray;
         NotifyOnMinimizeToTray = _settings.NotifyOnMinimizeToTray;
         UpdateListsOnStartup = _settings.UpdateListsOnStartup;
@@ -589,6 +655,8 @@ public sealed class MainViewModel : ViewModelBase
         }
 
         ProcessModeLink = _settings.ProcessModeLink;
+        ProcessModeConnectionType = _settings.ProcessModeConnectionType;
+        RefreshProcessModeAmneziaConfigState(_settings.ProcessModeAmneziaSourceName);
         ProcessModePort = _settings.ProcessModePort.ToString();
         if (InputParser.TryParsePort(ProcessModePort, out var processModePort, out _))
         {
@@ -777,8 +845,8 @@ public sealed class MainViewModel : ViewModelBase
             return;
         }
 
-        if (!string.IsNullOrWhiteSpace(ProcessModeLink)
-            && !ProxyLinkParser.TryParse(ProcessModeLink, out _, out var parseError))
+        if (HasProcessModeConfig()
+            && !TryValidateProcessModeConnection(out var parseError))
         {
             MessageBox.Show(parseError, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
@@ -822,7 +890,7 @@ public sealed class MainViewModel : ViewModelBase
             return;
         }
 
-        if (!ProxyLinkParser.TryParse(ProcessModeLink, out var profile, out var parseError))
+        if (!TryValidateProcessModeConnection(out var parseError))
         {
             if (!silent)
             {
@@ -842,13 +910,20 @@ public sealed class MainViewModel : ViewModelBase
             return;
         }
 
+        if (!TryResolveProcessModePacConflict(silent, localPort))
+        {
+            return;
+        }
+
         IsBusy = true;
 
         try
         {
             var progress = new Progress<string>(message => ProcessModeStatus = message);
             await _processModeService.TryRestoreAsync(
-                profile,
+                ProcessModeConnectionType,
+                TryGetProcessModeShadowsocksProfile(),
+                TryGetProcessModeAmneziaConfig(),
                 localPort,
                 ProcessModeApplications.ToList(),
                 progress,
@@ -898,7 +973,7 @@ public sealed class MainViewModel : ViewModelBase
             return;
         }
 
-        if (!ProxyLinkParser.TryParse(ProcessModeLink, out var profile, out var parseError))
+        if (!TryValidateProcessModeConnection(out var parseError))
         {
             if (!silent)
             {
@@ -918,13 +993,20 @@ public sealed class MainViewModel : ViewModelBase
             return;
         }
 
+        if (!TryResolveProcessModePacConflict(silent, localPort))
+        {
+            return;
+        }
+
         IsBusy = true;
 
         try
         {
             var progress = new Progress<string>(message => ProcessModeStatus = message);
             await _processModeService.StartAsync(
-                profile,
+                ProcessModeConnectionType,
+                TryGetProcessModeShadowsocksProfile(),
+                TryGetProcessModeAmneziaConfig(),
                 localPort,
                 ProcessModeApplications.ToList(),
                 progress,
@@ -962,10 +1044,47 @@ public sealed class MainViewModel : ViewModelBase
         StatusMessage = "Process Mode остановлен";
     }
 
+    private bool TryResolveProcessModePacConflict(bool silent, int processModePort)
+    {
+        if (!ProcessModePacConflict.ShouldWarn)
+        {
+            return true;
+        }
+
+        var message = ProcessModePacConflict.BuildWarningMessage(
+            ProxyAddress,
+            processModePort,
+            _localProxyService.IsRunning);
+
+        if (silent)
+        {
+            StatusMessage = "PAC включён — Discord идёт через системный прокси, не Redirector";
+            ProcessModeStatus = StatusMessage;
+            return true;
+        }
+
+        var result = MessageBox.Show(
+            message,
+            "PAC и Process Mode",
+            MessageBoxButton.YesNoCancel,
+            MessageBoxImage.Warning);
+
+        if (result == MessageBoxResult.Yes)
+        {
+            DisablePac();
+            return true;
+        }
+
+        return result == MessageBoxResult.No;
+    }
+
     private void UpdateProcessModeUi()
     {
         var isRunning = _processModeService.IsRunning;
         var address = _processModeService.LocalProxyAddress;
+        var tunnelLabel = _processModeService.ActiveConnectionType == ProcessModeConnectionType.Amnezia
+            ? "AmneziaWG"
+            : "ss";
 
         if (!isRunning)
         {
@@ -976,26 +1095,32 @@ public sealed class MainViewModel : ViewModelBase
         {
             FooterProcessModeStatus = "PM: проверка";
             ProcessModeStatus =
-                $"Process Mode: работает · {address} · Redirector · {ProcessModeApplications.Count} прилож.";
+                $"Process Mode: работает · {address} · {tunnelLabel} · Redirector · {ProcessModeApplications.Count} прилож.";
         }
         else if (_isProcessModeHealthy)
         {
-            FooterProcessModeStatus = $"PM: работает · {_processModePingMs} мс";
+            FooterProcessModeStatus = $"PM: SOCKS · {_processModePingMs} мс";
             ProcessModeStatus =
-                $"Process Mode: работает · {address} · Redirector · {ProcessModeApplications.Count} прилож. · {_processModePingMs} мс";
+                $"Process Mode: SOCKS ok · {address} · {tunnelLabel} · Redirector · {ProcessModeApplications.Count} прилож. · {_processModePingMs} мс";
+        }
+        else if (_isProcessModeUnreachable && _processModePingMs != null && !_isProcessModeUdpSupported)
+        {
+            FooterProcessModeStatus = "PM: UDP недоступен";
+            ProcessModeStatus =
+                $"Process Mode: TCP ok, UDP нет · {address} · {tunnelLabel} · Redirector · {ProcessModeApplications.Count} прилож.";
         }
         else if (_isProcessModeUnreachable)
         {
             FooterProcessModeStatus = "PM: нет доступа";
             ProcessModeStatus =
-                $"Process Mode: нет доступа · {address} · Redirector · {ProcessModeApplications.Count} прилож.";
+                $"Process Mode: нет доступа · {address} · {tunnelLabel} · Redirector · {ProcessModeApplications.Count} прилож.";
         }
         else
         {
             var apps = ProcessModeApplications.Count;
-            FooterProcessModeStatus = "PM: работает";
+            FooterProcessModeStatus = "PM: проверка";
             ProcessModeStatus =
-                $"Process Mode: работает · {address} · Redirector · {apps} прилож.";
+                $"Process Mode: проверка · {address} · {tunnelLabel} · Redirector · {apps} прилож.";
         }
 
         OnPropertyChanged(nameof(IsProcessModeRunning));
@@ -1228,7 +1353,7 @@ public sealed class MainViewModel : ViewModelBase
 
         try
         {
-            var result = await ProxyHealthChecker.CheckAsync(_processModeService.LocalPort, cancellationToken);
+            var result = await ProxyHealthChecker.CheckProcessModeAsync(_processModeService.LocalPort, cancellationToken);
             if (cancellationToken.IsCancellationRequested)
             {
                 return;
@@ -1261,6 +1386,7 @@ public sealed class MainViewModel : ViewModelBase
         _isProcessModeHealthChecking = false;
         _isProcessModeHealthy = result.IsReachable;
         _isProcessModeUnreachable = !result.IsReachable;
+        _isProcessModeUdpSupported = result.UdpSupported;
         _processModePingMs = result.LatencyMs;
 
         if (_processModeService.IsRunning)
@@ -1284,6 +1410,7 @@ public sealed class MainViewModel : ViewModelBase
         _isProcessModeHealthChecking = false;
         _isProcessModeHealthy = false;
         _isProcessModeUnreachable = false;
+        _isProcessModeUdpSupported = true;
         _processModePingMs = null;
         OnPropertyChanged(nameof(IsProcessModeHealthy));
         OnPropertyChanged(nameof(IsProcessModeUnreachable));
@@ -1587,6 +1714,13 @@ public sealed class MainViewModel : ViewModelBase
             _settings.ProcessModeLink = ProcessModeLink.Trim();
         }
 
+        if (!string.IsNullOrWhiteSpace(ProcessModeAmneziaSourceName))
+        {
+            _settings.ProcessModeAmneziaSourceName = ProcessModeAmneziaSourceName;
+        }
+
+        _settings.ProcessModeConnectionType = ProcessModeConnectionType;
+
         if (InputParser.TryParsePort(ProcessModePort, out var port, out _))
         {
             _settings.ProcessModePort = port;
@@ -1599,6 +1733,8 @@ public sealed class MainViewModel : ViewModelBase
     private void UpdateProcessModePreferences()
     {
         _settings.ProcessModeLink = ProcessModeLink.Trim();
+        _settings.ProcessModeAmneziaSourceName = ProcessModeAmneziaSourceName;
+        _settings.ProcessModeConnectionType = ProcessModeConnectionType;
 
         if (InputParser.TryParsePort(ProcessModePort, out var port, out _))
         {
@@ -1606,6 +1742,137 @@ public sealed class MainViewModel : ViewModelBase
         }
 
         _settings.ProcessModeApplications = ProcessModeApplications.ToList();
+    }
+
+    private bool HasProcessModeConfig() => ProcessModeConnectionType switch
+    {
+        ProcessModeConnectionType.Amnezia => HasProcessModeAmneziaConfig,
+        _ => !string.IsNullOrWhiteSpace(ProcessModeLink)
+    };
+
+    private bool TryValidateProcessModeConnection(out string error)
+    {
+        error = string.Empty;
+
+        return ProcessModeConnectionType switch
+        {
+            ProcessModeConnectionType.Amnezia => AmneziaConfigStorage.TryReadStored(out _, out _, out error),
+            _ => ProxyLinkParser.TryParse(ProcessModeLink, out _, out error)
+        };
+    }
+
+    private ProxyProfile? TryGetProcessModeShadowsocksProfile()
+    {
+        if (ProcessModeConnectionType != ProcessModeConnectionType.Shadowsocks)
+        {
+            return null;
+        }
+
+        return ProxyLinkParser.TryParse(ProcessModeLink, out var profile, out _)
+            ? profile
+            : null;
+    }
+
+    private string? TryGetProcessModeAmneziaConfig()
+    {
+        if (ProcessModeConnectionType != ProcessModeConnectionType.Amnezia)
+        {
+            return null;
+        }
+
+        return AmneziaConfigStorage.TryReadStored(out var config, out _, out _)
+            ? config
+            : null;
+    }
+
+    public bool TryImportAmneziaConfigFile(string path, bool showErrors = true)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return false;
+        }
+
+        if (!path.EndsWith(".conf", StringComparison.OrdinalIgnoreCase))
+        {
+            if (showErrors)
+            {
+                MessageBox.Show(
+                    "Поддерживаются только файлы .conf",
+                    "Ошибка",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
+
+            return false;
+        }
+
+        if (!AmneziaConfigStorage.TryImportFromFile(path, out var summary, out var error))
+        {
+            if (showErrors)
+            {
+                MessageBox.Show(error, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+
+            return false;
+        }
+
+        ApplyProcessModeAmneziaSummary(summary);
+        UpdateProcessModePreferences();
+        RelayCommand.RaiseAllCanExecuteChanged();
+        StatusMessage = $"Конфиг Amnezia загружен: {summary.Endpoint}";
+        return true;
+    }
+
+    private void PickAmneziaConfigFile()
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Выберите конфиг Amnezia",
+            Filter = "Конфиг Amnezia (*.conf)|*.conf",
+            DefaultExt = ".conf",
+            CheckFileExists = true,
+            Multiselect = false
+        };
+
+        if (dialog.ShowDialog() == true)
+        {
+            TryImportAmneziaConfigFile(dialog.FileName);
+        }
+    }
+
+    private void ClearAmneziaConfig()
+    {
+        AmneziaConfigStorage.ClearStoredConfig();
+        RefreshProcessModeAmneziaConfigState(string.Empty);
+        UpdateProcessModePreferences();
+        RelayCommand.RaiseAllCanExecuteChanged();
+        StatusMessage = "Конфиг Amnezia удалён";
+    }
+
+    private void RefreshProcessModeAmneziaConfigState(string? sourceFileName)
+    {
+        if (!AmneziaConfigStorage.HasStoredConfig
+            || !AmneziaConfigStorage.TryReadStored(out _, out var summary, out _))
+        {
+            HasProcessModeAmneziaConfig = false;
+            ProcessModeAmneziaEndpoint = string.Empty;
+            ProcessModeAmneziaSourceName = string.Empty;
+            return;
+        }
+
+        HasProcessModeAmneziaConfig = true;
+        ProcessModeAmneziaEndpoint = summary.Endpoint;
+        ProcessModeAmneziaSourceName = !string.IsNullOrWhiteSpace(sourceFileName)
+            ? sourceFileName
+            : summary.SourceFileName;
+    }
+
+    private void ApplyProcessModeAmneziaSummary(AmneziaConfigSummary summary)
+    {
+        HasProcessModeAmneziaConfig = true;
+        ProcessModeAmneziaEndpoint = summary.Endpoint;
+        ProcessModeAmneziaSourceName = summary.SourceFileName;
+        _settings.ProcessModeAmneziaSourceName = summary.SourceFileName;
     }
 
     private void UpdateTunnelingPreferences()
@@ -1637,7 +1904,7 @@ public sealed class MainViewModel : ViewModelBase
     {
         _settings.StartWithWindows = StartWithWindows;
         _settings.StartProxyWithApp = StartProxyWithApp;
-        _settings.StartProcessModeWithApp = StartProcessModeWithApp;
+        _settings.StartProcessModeWithApp = AppBranding.IsProcessModeUiVisible && StartProcessModeWithApp;
         _settings.StartMinimizedToTray = StartMinimizedToTray;
         _settings.NotifyOnMinimizeToTray = NotifyOnMinimizeToTray;
         _settings.UpdateListsOnStartup = UpdateListsOnStartup;

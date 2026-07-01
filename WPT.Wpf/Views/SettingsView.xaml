@@ -22,8 +22,6 @@
 
             <CheckBox Content="Запускать прокси со стартом приложения" IsChecked="{Binding StartProxyWithApp}" />
 
-            <CheckBox Content="Запускать Process Mode со стартом приложения" IsChecked="{Binding StartProcessModeWithApp}" />
-
             <CheckBox Content="Запускать свернутым в трей" IsChecked="{Binding StartMinimizedToTray}" />
 
 

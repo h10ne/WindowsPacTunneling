@@ -6,6 +6,8 @@
 
              xmlns:ctrl="clr-namespace:WPT.Wpf.Controls"
 
+             xmlns:conv="clr-namespace:WPT.Wpf.Converters"
+
              MinWidth="480"
 
              HorizontalAlignment="Stretch"
@@ -13,6 +15,8 @@
              HorizontalContentAlignment="Stretch">
 
     <UserControl.Resources>
+
+        <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
 
         <Style x:Key="ProcessListItem" TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
 
@@ -44,17 +48,155 @@
 
 
 
-                <TextBlock Text="Ссылка на прокси" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
+                <TextBlock Text="Тип подключения" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
 
-                <TextBox Text="{Binding ProcessModeLink, UpdateSourceTrigger=PropertyChanged}"
+                <ComboBox ItemsSource="{Binding ProcessModeConnectionTypes}"
 
-                         Style="{StaticResource MultilineTextBox}"
+                          DisplayMemberPath="DisplayName"
 
-                         Height="88" VerticalScrollBarVisibility="Auto" Margin="0,0,0,16"
+                          SelectedValuePath="Value"
 
-                         IsEnabled="{Binding IsProcessModeEditingEnabled}"
+                          SelectedValue="{Binding ProcessModeConnectionType}"
 
-                         ctrl:HintProperties.Hint="ss://method:password@server:port#remark" />
+                          IsEnabled="{Binding IsProcessModeEditingEnabled}"
+
+                          Margin="0,0,0,12" />
+
+
+
+                <StackPanel Visibility="{Binding IsProcessModeSsSelected, Converter={StaticResource BoolToVis}}">
+
+                    <TextBlock Text="Ссылка Shadowsocks" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
+
+                    <TextBox Text="{Binding ProcessModeLink, UpdateSourceTrigger=PropertyChanged}"
+
+                             Style="{StaticResource MultilineTextBox}"
+
+                             Height="72" VerticalScrollBarVisibility="Auto" Margin="0,0,0,12"
+
+                             IsEnabled="{Binding IsProcessModeEditingEnabled}"
+
+                             ctrl:HintProperties.Hint="ss://method:password@server:port#remark" />
+
+                </StackPanel>
+
+
+
+                <StackPanel Visibility="{Binding IsProcessModeAmneziaSelected, Converter={StaticResource BoolToVis}}">
+
+                    <TextBlock Text="Конфигурация Amnezia" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
+
+                    <Border x:Name="AmneziaConfigDropZone"
+
+                            AllowDrop="True"
+
+                            DragOver="OnAmneziaConfigDragOver"
+
+                            Drop="OnAmneziaConfigDrop"
+
+                            Background="{StaticResource InputBrush}"
+
+                            BorderBrush="{StaticResource BorderBrush}"
+
+                            BorderThickness="1"
+
+                            CornerRadius="6"
+
+                            Padding="10,8"
+
+                            MinHeight="36"
+
+                            Margin="0,0,0,12"
+
+                            IsEnabled="{Binding IsProcessModeEditingEnabled}">
+
+                        <Grid VerticalAlignment="Center">
+
+                            <Grid.ColumnDefinitions>
+
+                                <ColumnDefinition Width="*" />
+
+                                <ColumnDefinition Width="Auto" />
+
+                                <ColumnDefinition Width="Auto" />
+
+                            </Grid.ColumnDefinitions>
+
+
+
+                            <TextBlock Grid.Column="0"
+
+                                       VerticalAlignment="Center"
+
+                                       Margin="0,0,8,0"
+
+                                       TextTrimming="CharacterEllipsis"
+
+                                       Foreground="{StaticResource TextSecondaryBrush}"
+
+                                       Text="Перетащите .conf или нажмите «Выбрать файл»"
+
+                                       Visibility="{Binding IsProcessModeAmneziaDropHintVisible, Converter={StaticResource BoolToVis}}" />
+
+
+
+                            <TextBlock Grid.Column="0"
+
+                                       VerticalAlignment="Center"
+
+                                       Margin="0,0,8,0"
+
+                                       TextTrimming="CharacterEllipsis"
+
+                                       Visibility="{Binding HasProcessModeAmneziaConfig, Converter={StaticResource BoolToVis}}">
+
+                                <Run Text="{Binding ProcessModeAmneziaEndpoint, Mode=OneWay}" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" />
+
+                                <Run Text=" · " Foreground="{StaticResource TextSecondaryBrush}" />
+
+                                <Run Text="{Binding ProcessModeAmneziaSourceName, Mode=OneWay}" Foreground="{StaticResource TextSecondaryBrush}" />
+
+                            </TextBlock>
+
+
+
+                            <Button Grid.Column="1"
+
+                                    Content="Выбрать файл"
+
+                                    Style="{StaticResource SecondaryButton}"
+
+                                    Padding="10,6"
+
+                                    MinHeight="32"
+
+                                    Command="{Binding PickAmneziaConfigCommand}" />
+
+
+
+                            <Button Grid.Column="2"
+
+                                    Content="×"
+
+                                    Width="32"
+
+                                    MinHeight="32"
+
+                                    Margin="6,0,0,0"
+
+                                    Style="{StaticResource ListItemRemoveZone}"
+
+                                    Command="{Binding ClearAmneziaConfigCommand}"
+
+                                    ToolTip="Очистить"
+
+                                    Visibility="{Binding HasProcessModeAmneziaConfig, Converter={StaticResource BoolToVis}}" />
+
+                        </Grid>
+
+                    </Border>
+
+                </StackPanel>
 
 
 
@@ -62,7 +204,7 @@
 
                 <TextBox Text="{Binding ProcessModePort, UpdateSourceTrigger=PropertyChanged}" Width="100" HorizontalAlignment="Left"
 
-                         IsEnabled="{Binding IsProcessModeEditingEnabled}" Margin="0,0,0,16"
+                         IsEnabled="{Binding IsProcessModeEditingEnabled}" Margin="0,0,0,12"
 
                          ctrl:HintProperties.Hint="20808" />
 
@@ -164,7 +306,7 @@
 
                     <TextBlock TextWrapping="Wrap" Foreground="{StaticResource TextPrimaryBrush}" FontSize="12"
 
-                               Text="Process Mode перехватывает TCP/UDP выбранных процессов через Redirector (netfilter2) и направляет их на локальный SOCKS. Сейчас поддерживается ss://. Требуются права администратора." />
+                               Text="Process Mode перехватывает весь трафик выбранных процессов. Поддерживаются Shadowsocks (ss://) и AmneziaWG. Требуются права администратора." />
 
                 </Border>
 

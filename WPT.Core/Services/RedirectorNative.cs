@@ -74,7 +74,8 @@ public static class RedirectorNative
         Dial(DialName.AIO_FILTERUDP, true);
         Dial(DialName.AIO_FILTERDNS, true);
         Dial(DialName.AIO_DNSONLY, false);
-        Dial(DialName.AIO_DNSPROX, true);
+        // Fake DNS IP (198.18.x.x) ломает UDP/WebRTC: TCP Redirector умеет мапить, SOCKS UDP — нет
+        Dial(DialName.AIO_DNSPROX, false);
         Dial(DialName.AIO_DNSHOST, "8.8.8.8");
         Dial(DialName.AIO_DNSPORT, "53");
         Dial(DialName.AIO_TGTHOST, socksHost);
@@ -160,6 +161,18 @@ public static class RedirectorNative
         if (File.Exists(singBox))
         {
             AddBypassPath(singBox);
+        }
+
+        var wireProxy = Path.Combine(AppPaths.BinDirectory, "wireproxy.exe");
+        if (File.Exists(wireProxy))
+        {
+            AddBypassPath(wireProxy);
+        }
+
+        var amneziaBox = Path.Combine(AppPaths.BinDirectory, "amnezia-box.exe");
+        if (File.Exists(amneziaBox))
+        {
+            AddBypassPath(amneziaBox);
         }
     }
 
