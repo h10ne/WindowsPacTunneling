@@ -67,4 +67,6 @@ public sealed class AppSettings
     public string TgWsProxySecret { get; set; } = string.Empty;
 
     public bool StartBypassWithApp { get; set; }
+
+    public bool RunAsAdministrator { get; set; }
 }

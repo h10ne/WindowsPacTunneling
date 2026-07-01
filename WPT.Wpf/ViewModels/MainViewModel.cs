@@ -50,7 +50,7 @@ public sealed class MainViewModel : ViewModelBase
     private string _processModeStatus = "Process Mode: остановлен";
     private string _newDomain = string.Empty;
     private string _newIp = string.Empty;
-    private string _statusMessage = "Готово";
+    private string _footerLog = string.Empty;
     private string _footerRight = "PAC: выкл";
     private string _footerProxyStatus = "Прокси: остановлен";
     private string _footerBypassStatus = "Обход: остановлен";
@@ -61,7 +61,11 @@ public sealed class MainViewModel : ViewModelBase
     private bool _startWithWindows;
     private bool _startProxyWithApp;
     private bool _startProcessModeWithApp;
+    private bool _startBypassWithApp;
+    private bool _runAsAdministrator;
     private bool _startMinimizedToTray;
+    private bool _zapretUpdateAvailable;
+    private string _zapretUpdateStatus = "Нажмите «Проверить обновления», чтобы узнать актуальность zapret.";
     private bool _notifyOnMinimizeToTray;
     private bool _updateListsOnStartup;
     private bool _routeAllTrafficThroughProxy;
@@ -125,8 +129,11 @@ public sealed class MainViewModel : ViewModelBase
         UpdateListsCommand = new RelayCommand(async () => await UpdateListsAsync());
         SaveSettingsCommand = new RelayCommand(SaveAppSettings);
         OpenDataFolderCommand = new RelayCommand(OpenDataFolder);
+        RestartAsAdminCommand = new RelayCommand(RestartAsAdmin, () => IsRestartAsAdminEnabled && !IsBusy);
+        CheckZapretUpdateCommand = new RelayCommand(async () => await CheckZapretUpdateAsync(), () => !IsBusy);
+        DownloadZapretUpdateCommand = new RelayCommand(async () => await DownloadZapretUpdateAsync(), () => !IsBusy && CanDownloadZapretUpdate);
 
-        _domainListService.StatusChanged += (_, message) => StatusMessage = message;
+        _domainListService.StatusChanged += (_, message) => SetFooterLog(message);
 
         _dailyUpdateTimer = new DispatcherTimer { Interval = TimeSpan.FromHours(1) };
         _dailyUpdateTimer.Tick += async (_, _) =>
@@ -323,10 +330,16 @@ public sealed class MainViewModel : ViewModelBase
         set { if (value) SelectedSection = 3; }
     }
 
+    public string FooterLog
+    {
+        get => _footerLog;
+        set => SetProperty(ref _footerLog, value);
+    }
+
     public string StatusMessage
     {
-        get => _statusMessage;
-        set => SetProperty(ref _statusMessage, value);
+        get => FooterLog;
+        set => FooterLog = value;
     }
 
     public string FooterRight
@@ -567,6 +580,28 @@ public sealed class MainViewModel : ViewModelBase
         set => SetProperty(ref _startProcessModeWithApp, value);
     }
 
+    public bool RunAsAdministrator
+    {
+        get => _runAsAdministrator;
+        set
+        {
+            if (SetProperty(ref _runAsAdministrator, value) && !value)
+            {
+                StartBypassWithApp = false;
+            }
+
+            OnPropertyChanged(nameof(IsStartBypassWithAppEnabled));
+        }
+    }
+
+    public bool StartBypassWithApp
+    {
+        get => _startBypassWithApp;
+        set => SetProperty(ref _startBypassWithApp, value);
+    }
+
+    public bool IsStartBypassWithAppEnabled => RunAsAdministrator;
+
     public bool StartMinimizedToTray
     {
         get => _startMinimizedToTray;
@@ -583,6 +618,26 @@ public sealed class MainViewModel : ViewModelBase
     {
         get => _updateListsOnStartup;
         set => SetProperty(ref _updateListsOnStartup, value);
+    }
+
+    public bool IsRestartAsAdminEnabled => !AdminHelper.IsRunningAsAdmin();
+
+    public string ZapretUpdateStatus
+    {
+        get => _zapretUpdateStatus;
+        private set => SetProperty(ref _zapretUpdateStatus, value);
+    }
+
+    public bool CanDownloadZapretUpdate
+    {
+        get => _zapretUpdateAvailable;
+        private set
+        {
+            if (SetProperty(ref _zapretUpdateAvailable, value))
+            {
+                RelayCommand.RaiseAllCanExecuteChanged();
+            }
+        }
     }
 
     public bool RouteAllTrafficThroughProxy
@@ -651,9 +706,16 @@ public sealed class MainViewModel : ViewModelBase
 
     public RelayCommand OpenDataFolderCommand { get; }
 
+    public RelayCommand RestartAsAdminCommand { get; }
+
+    public RelayCommand CheckZapretUpdateCommand { get; }
+
+    public RelayCommand DownloadZapretUpdateCommand { get; }
+
     public async Task InitializeAsync()
     {
         IsBusy = true;
+        SetFooterLog("Инициализация приложения...");
 
         try
         {
@@ -705,10 +767,10 @@ public sealed class MainViewModel : ViewModelBase
 
             if (_settings.IsProxyActive && !StartProxyWithApp)
             {
-                StatusMessage = "PAC был активен. Нажмите «Применить» для повторной активации.";
+                SetFooterLog("PAC был активен. Нажмите «Применить» для повторной активации.");
             }
 
-            if (_settings.IsBypassActive)
+            if (StartBypassWithApp && _settings.IsBypassActive)
             {
                 await RestoreBypassAsync(silent: true);
             }
@@ -716,11 +778,20 @@ public sealed class MainViewModel : ViewModelBase
             {
                 TryAdoptBypassState();
             }
+
+            if (_settings.IsBypassActive && !StartBypassWithApp)
+            {
+                SetFooterLog("Обход был активен. Нажмите «Запустить» для повторной активации.");
+            }
         }
         finally
         {
             IsBusy = false;
             RefreshPacState();
+            if (FooterLog == "Инициализация приложения...")
+            {
+                SetFooterLog("Готово");
+            }
         }
     }
 
@@ -843,8 +914,10 @@ public sealed class MainViewModel : ViewModelBase
         }
 
         StartWithWindows = _settings.StartWithWindows;
+        RunAsAdministrator = _settings.RunAsAdministrator;
         StartProxyWithApp = _settings.StartProxyWithApp;
         StartProcessModeWithApp = AppBranding.IsProcessModeUiVisible && _settings.StartProcessModeWithApp;
+        StartBypassWithApp = _settings.RunAsAdministrator && _settings.StartBypassWithApp;
         StartMinimizedToTray = _settings.StartMinimizedToTray;
         NotifyOnMinimizeToTray = _settings.NotifyOnMinimizeToTray;
         UpdateListsOnStartup = _settings.UpdateListsOnStartup;
@@ -864,6 +937,7 @@ public sealed class MainViewModel : ViewModelBase
         TryAdoptBypassState();
         UpdateBypassInfoText();
         NotifyBypassCommandState();
+        RefreshZapretUpdateStatusHint();
 
         ProcessModeLink = _settings.ProcessModeLink;
         ProcessModeConnectionType = _settings.ProcessModeConnectionType;
@@ -1065,7 +1139,7 @@ public sealed class MainViewModel : ViewModelBase
 
         _processModeService.Prepare(port);
         SaveProcessModeSettings(isActive: _processModeService.IsRunning);
-        StatusMessage = "Настройки Process Mode сохранены";
+        SetFooterLog("Настройки Process Mode сохранены");
         MessageBox.Show(
             "Настройки Process Mode сохранены.",
             "Готово",
@@ -1127,10 +1201,15 @@ public sealed class MainViewModel : ViewModelBase
         }
 
         IsBusy = true;
+        SetFooterLog("Восстановление Process Mode...");
 
         try
         {
-            var progress = new Progress<string>(message => ProcessModeStatus = message);
+            var progress = new Progress<string>(message =>
+            {
+                ProcessModeStatus = message;
+                SetFooterLog(message);
+            });
             await _processModeService.TryRestoreAsync(
                 ProcessModeConnectionType,
                 TryGetProcessModeShadowsocksProfile(),
@@ -1143,15 +1222,12 @@ public sealed class MainViewModel : ViewModelBase
             SaveProcessModeSettings(isActive: true);
             UpdateProcessModeUi();
             _ = RefreshProcessModeHealthAsync(showCheckingState: false);
-
-            if (!silent)
-            {
-                StatusMessage = $"Process Mode восстановлен: {_processModeService.LocalProxyAddress}";
-            }
+            SetFooterLog($"Process Mode восстановлен: {_processModeService.LocalProxyAddress}");
         }
         catch (Exception ex)
         {
             UpdateProcessModeUi();
+            SetFooterLog($"Ошибка восстановления Process Mode: {ex.Message}");
             if (!silent)
             {
                 MessageBox.Show(ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
@@ -1210,10 +1286,15 @@ public sealed class MainViewModel : ViewModelBase
         }
 
         IsBusy = true;
+        SetFooterLog("Запуск Process Mode...");
 
         try
         {
-            var progress = new Progress<string>(message => ProcessModeStatus = message);
+            var progress = new Progress<string>(message =>
+            {
+                ProcessModeStatus = message;
+                SetFooterLog(message);
+            });
             await _processModeService.StartAsync(
                 ProcessModeConnectionType,
                 TryGetProcessModeShadowsocksProfile(),
@@ -1226,15 +1307,12 @@ public sealed class MainViewModel : ViewModelBase
             SaveProcessModeSettings(isActive: true);
             UpdateProcessModeUi();
             _ = RefreshProcessModeHealthAsync(showCheckingState: true);
-
-            if (!silent)
-            {
-                StatusMessage = $"Process Mode: {_processModeService.LocalProxyAddress}";
-            }
+            SetFooterLog($"Process Mode запущен: {_processModeService.LocalProxyAddress}");
         }
         catch (Exception ex)
         {
             UpdateProcessModeUi();
+            SetFooterLog($"Ошибка запуска Process Mode: {ex.Message}");
             if (!silent)
             {
                 MessageBox.Show(ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
@@ -1252,7 +1330,7 @@ public sealed class MainViewModel : ViewModelBase
         SaveProcessModeSettings(isActive: false);
         ResetProcessModeHealth();
         UpdateProcessModeUi();
-        StatusMessage = "Process Mode остановлен";
+        SetFooterLog("Process Mode остановлен");
     }
 
     private bool TryResolveProcessModePacConflict(bool silent, int processModePort)
@@ -1269,8 +1347,8 @@ public sealed class MainViewModel : ViewModelBase
 
         if (silent)
         {
-            StatusMessage = "PAC включён — Discord идёт через системный прокси, не Redirector";
-            ProcessModeStatus = StatusMessage;
+            SetFooterLog("PAC включён — Discord идёт через системный прокси, не Redirector");
+            ProcessModeStatus = FooterLog;
             return true;
         }
 
@@ -1389,10 +1467,15 @@ public sealed class MainViewModel : ViewModelBase
         }
 
         IsBusy = true;
+        SetFooterLog("Запуск локального прокси...");
 
         try
         {
-            var progress = new Progress<string>(message => ProxyState = message);
+            var progress = new Progress<string>(message =>
+            {
+                ProxyState = message;
+                SetFooterLog(message);
+            });
             await _localProxyService.StartAsync(profile, localPort, progress, CancellationToken.None);
 
             SaveProxySettings(isActive: true);
@@ -1400,15 +1483,13 @@ public sealed class MainViewModel : ViewModelBase
             UpdateFooter();
             _ = RefreshProxyHealthAsync();
 
-            if (!silent)
-            {
-                StatusMessage = $"Локальный прокси: {_localProxyService.LocalProxyAddress}";
-            }
+            SetFooterLog($"Локальный прокси запущен: {_localProxyService.LocalProxyAddress}");
         }
         catch (Exception ex)
         {
             ResetProxyHealth();
             UpdateProxyUi();
+            SetFooterLog($"Ошибка запуска прокси: {ex.Message}");
             if (!silent)
             {
                 MessageBox.Show(ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
@@ -1427,6 +1508,7 @@ public sealed class MainViewModel : ViewModelBase
         ResetProxyHealth();
         UpdateProxyUi();
         UpdateFooter();
+        SetFooterLog("Локальный прокси остановлен");
     }
 
     private void UpdateProxyUi()
@@ -1634,12 +1716,16 @@ public sealed class MainViewModel : ViewModelBase
             IsBusy = true;
         }
 
+        SetFooterLog("Обновление списков...");
+
         try
         {
             await _domainListService.UpdateAllListsAsync();
+            SetFooterLog("Списки обновлены");
         }
         catch (Exception ex)
         {
+            SetFooterLog($"Не удалось обновить списки: {ex.Message}");
             if (showWarningOnError)
             {
                 MessageBox.Show(
@@ -1661,6 +1747,7 @@ public sealed class MainViewModel : ViewModelBase
     private async Task ShowPacAsync()
     {
         IsBusy = true;
+        SetFooterLog("Подготовка PAC-файла...");
 
         try
         {
@@ -1698,16 +1785,13 @@ public sealed class MainViewModel : ViewModelBase
     {
         ShowRussiaInsideRestrictionHint = false;
         IsBusy = true;
+        SetFooterLog("Применение PAC...");
 
         try
         {
             if (!InputParser.TryParsePort(PacPort, out var pacPort, out var pacPortError))
             {
-                if (!silent)
-                {
-                    MessageBox.Show(pacPortError, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
-                }
-
+                SetFooterLog(pacPortError);
                 return;
             }
 
@@ -1716,7 +1800,7 @@ public sealed class MainViewModel : ViewModelBase
             {
                 if (silent)
                 {
-                    StatusMessage = "Не удалось автоматически запустить PAC";
+                    SetFooterLog("Не удалось автоматически запустить PAC");
                 }
 
                 return;
@@ -1730,41 +1814,18 @@ public sealed class MainViewModel : ViewModelBase
 
             var pacUrl = _pacHttpServer.GetPacUrl(pac.Value.Hash);
             WindowsProxySettings.EnablePac(pacUrl);
-            StartupService.SetEnabled(StartWithWindows);
+            StartupService.SetEnabled(StartWithWindows, RunAsAdministrator);
             SaveSettings(pac.Value.Hash, isActive: true);
 
             RefreshPacState();
 
-            if (RouteAllTrafficThroughProxy)
-            {
-                StatusMessage = "PAC активен: весь трафик через прокси";
-            }
-            else
-            {
-                StatusMessage = $"PAC активен: {pac.Value.DomainsCount} доменов, {pac.Value.SubnetsCount} подсетей";
-            }
-
-            if (!silent)
-            {
-                var details = RouteAllTrafficThroughProxy
-                    ? "Режим: весь трафик через прокси"
-                    : $"Доменов: {pac.Value.DomainsCount}\nПодсетей: {pac.Value.SubnetsCount}";
-
-                MessageBox.Show(
-                    $"PAC-файл применён.\n\nАдрес: {pacUrl}\n{details}",
-                    "Готово",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Information);
-            }
+            SetFooterLog(RouteAllTrafficThroughProxy
+                ? $"PAC применён: {pacUrl} · весь трафик через прокси"
+                : $"PAC применён: {pacUrl} · {pac.Value.DomainsCount} доменов, {pac.Value.SubnetsCount} подсетей");
         }
         catch (Exception ex)
         {
-            if (!silent)
-            {
-                MessageBox.Show(ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-
-            StatusMessage = "Ошибка применения PAC";
+            SetFooterLog($"Ошибка применения PAC: {ex.Message}");
         }
         finally
         {
@@ -1778,7 +1839,7 @@ public sealed class MainViewModel : ViewModelBase
         {
             if (!silent)
             {
-                MessageBox.Show(error, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
+                SetFooterLog(error);
             }
 
             return null;
@@ -1794,11 +1855,7 @@ public sealed class MainViewModel : ViewModelBase
         {
             if (!silent)
             {
-                MessageBox.Show(
-                    "Выберите хотя бы один список или укажите свои домены/IP.",
-                    "Ошибка",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Warning);
+                SetFooterLog("Выберите хотя бы один список или укажите свои домены/IP.");
             }
 
             return null;
@@ -1815,11 +1872,7 @@ public sealed class MainViewModel : ViewModelBase
         {
             if (!silent)
             {
-                MessageBox.Show(
-                    "Не найдено доменов или IP для формирования PAC.",
-                    "Ошибка",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Warning);
+                SetFooterLog("Не найдено доменов или IP для формирования PAC.");
             }
 
             return null;
@@ -1837,7 +1890,7 @@ public sealed class MainViewModel : ViewModelBase
             _pacHttpServer.Stop();
             SaveSettings(null, isActive: false);
             RefreshPacState();
-            StatusMessage = "PAC отключён";
+            SetFooterLog("PAC отключён");
         }
         catch (Exception ex)
         {
@@ -1850,9 +1903,9 @@ public sealed class MainViewModel : ViewModelBase
         try
         {
             UpdateAppSettingsPreferences();
-            StartupService.SetEnabled(StartWithWindows);
+            StartupService.SetEnabled(StartWithWindows, RunAsAdministrator);
             SettingsService.Save(_settings);
-            StatusMessage = "Настройки сохранены";
+            SetFooterLog("Настройки сохранены");
             MessageBox.Show(
                 "Настройки сохранены.",
                 "Готово",
@@ -1873,6 +1926,125 @@ public sealed class MainViewModel : ViewModelBase
             FileName = AppPaths.Root,
             UseShellExecute = true
         });
+    }
+
+    private void RestartAsAdmin()
+    {
+        if (AdminHelper.IsRunningAsAdmin())
+        {
+            MessageBox.Show(
+                "Приложение уже запущено от имени администратора.",
+                "Готово",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        SaveUiState();
+        SetFooterLog("Перезапуск от имени администратора...");
+        if (!AdminHelper.TryRestartAsAdmin("--elevated"))
+        {
+            System.Windows.Application.Current.Shutdown(0);
+        }
+    }
+
+    private async Task CheckZapretUpdateAsync()
+    {
+        IsBusy = true;
+        SetFooterLog("Проверка обновлений zapret...");
+
+        try
+        {
+            var result = await ZapretInstaller.CheckForUpdateAsync();
+            ZapretUpdateStatus = result.Message;
+            CanDownloadZapretUpdate = result.UpdateAvailable;
+            SetFooterLog(result.Message);
+        }
+        catch (Exception ex)
+        {
+            CanDownloadZapretUpdate = false;
+            ZapretUpdateStatus = $"Не удалось проверить обновления: {ex.Message}";
+            SetFooterLog(ZapretUpdateStatus);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task DownloadZapretUpdateAsync()
+    {
+        if (!CanDownloadZapretUpdate)
+        {
+            return;
+        }
+
+        IsBusy = true;
+
+        try
+        {
+            if (!AdminHelper.IsRunningAsAdmin())
+            {
+                const string adminRequired =
+                    "Обновление zapret требует запуска WPT от имени администратора (драйвер WinDivert).";
+                ZapretUpdateStatus = adminRequired;
+                SetFooterLog(adminRequired);
+                return;
+            }
+
+            if (IsBypassZapretRunning || ZapretInstaller.HasRunningProcesses())
+            {
+                SetFooterLog("Остановка обхода zapret...");
+                await _bypassService.StopAsync(stopZapret: true, stopTelegram: false);
+                SaveBypassSettings(isActive: IsBypassRunning);
+                UpdateBypassUi();
+            }
+
+            SetFooterLog("Скачивание обновления zapret...");
+
+            var progress = new Progress<string>(message =>
+            {
+                ZapretUpdateStatus = message;
+                SetFooterLog(message);
+            });
+            await ZapretInstaller.InstallOrUpdateAsync(progress, CancellationToken.None);
+            CanDownloadZapretUpdate = false;
+            var version = ZapretInstaller.GetInstalledVersion();
+            _settings.SavedZapretStrategy = null;
+            BypassActiveStrategy = string.Empty;
+            SettingsService.Save(_settings);
+            ZapretUpdateStatus = string.IsNullOrWhiteSpace(version)
+                ? "Zapret успешно установлен."
+                : $"Zapret обновлён до версии {version}.";
+            SetFooterLog(ZapretUpdateStatus);
+            NotifyBypassCommandState();
+        }
+        catch (Exception ex)
+        {
+            var message = ex.InnerException?.Message ?? ex.Message;
+            ZapretUpdateStatus = $"Ошибка обновления: {message}";
+            SetFooterLog(ZapretUpdateStatus);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private void RefreshZapretUpdateStatusHint()
+    {
+        if (!ZapretInstaller.IsInstalled())
+        {
+            ZapretUpdateStatus = "Zapret не установлен.";
+            CanDownloadZapretUpdate = false;
+            return;
+        }
+
+        var version = ZapretInstaller.GetInstalledVersion();
+        ZapretUpdateStatus = string.IsNullOrWhiteSpace(version)
+            ? "Zapret установлен. Версия неизвестна — проверьте обновления."
+            : $"Установлена версия {version}.";
+        CanDownloadZapretUpdate = false;
     }
 
     private void SaveSettings(string? hash, bool isActive)
@@ -2030,7 +2202,7 @@ public sealed class MainViewModel : ViewModelBase
         ApplyProcessModeAmneziaSummary(summary);
         UpdateProcessModePreferences();
         RelayCommand.RaiseAllCanExecuteChanged();
-        StatusMessage = $"Конфиг Amnezia загружен: {summary.Endpoint}";
+        SetFooterLog($"Конфиг Amnezia загружен: {summary.Endpoint}");
         return true;
     }
 
@@ -2057,7 +2229,7 @@ public sealed class MainViewModel : ViewModelBase
         RefreshProcessModeAmneziaConfigState(string.Empty);
         UpdateProcessModePreferences();
         RelayCommand.RaiseAllCanExecuteChanged();
-        StatusMessage = "Конфиг Amnezia удалён";
+        SetFooterLog("Конфиг Amnezia удалён");
     }
 
     private void RefreshProcessModeAmneziaConfigState(string? sourceFileName)
@@ -2114,8 +2286,10 @@ public sealed class MainViewModel : ViewModelBase
     private void UpdateAppSettingsPreferences()
     {
         _settings.StartWithWindows = StartWithWindows;
+        _settings.RunAsAdministrator = RunAsAdministrator;
         _settings.StartProxyWithApp = StartProxyWithApp;
         _settings.StartProcessModeWithApp = AppBranding.IsProcessModeUiVisible && StartProcessModeWithApp;
+        _settings.StartBypassWithApp = RunAsAdministrator && StartBypassWithApp;
         _settings.StartMinimizedToTray = StartMinimizedToTray;
         _settings.NotifyOnMinimizeToTray = NotifyOnMinimizeToTray;
         _settings.UpdateListsOnStartup = UpdateListsOnStartup;
@@ -2124,6 +2298,16 @@ public sealed class MainViewModel : ViewModelBase
     private void UpdateFooter()
     {
         FooterRight = WindowsProxySettings.IsPacEnabled(out _) ? "PAC: вкл" : "PAC: выкл";
+    }
+
+    private void SetFooterLog(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return;
+        }
+
+        FooterLog = message;
     }
 
     private async Task ToggleBypassAsync()
@@ -2155,6 +2339,7 @@ public sealed class MainViewModel : ViewModelBase
 
                 _settings.TgWsProxyPort = resumeTgPort;
                 IsBusy = true;
+                SetFooterLog("Запуск Telegram-прокси...");
                 try
                 {
                     var progress = new Progress<BypassProgressReport>(HandleBypassProgress);
@@ -2166,9 +2351,11 @@ public sealed class MainViewModel : ViewModelBase
                     ApplyTelegramStartResult();
                     SaveBypassSettings(isActive: true);
                     UpdateBypassUi();
+                    SetFooterLog("Telegram-прокси запущен");
                 }
                 catch (Exception ex)
                 {
+                    SetFooterLog($"Ошибка запуска Telegram-прокси: {ex.Message}");
                     if (!silent)
                     {
                         MessageBox.Show(ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
@@ -2216,6 +2403,7 @@ public sealed class MainViewModel : ViewModelBase
         }
 
         IsBusy = true;
+        SetFooterLog("Запуск обхода...");
 
         try
         {
@@ -2241,16 +2429,13 @@ public sealed class MainViewModel : ViewModelBase
 
             SaveBypassSettings(isActive: true);
             UpdateBypassUi();
-
-            if (!silent)
-            {
-                StatusMessage = "Обход запущен";
-            }
+            SetFooterLog("Обход запущен");
         }
         catch (Exception ex)
         {
             await _bypassService.StopAsync(BypassEnableZapret, BypassEnableTelegram);
             UpdateBypassUi();
+            SetFooterLog($"Ошибка запуска обхода: {ex.Message}");
             if (!silent)
             {
                 MessageBox.Show(ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
@@ -2270,6 +2455,7 @@ public sealed class MainViewModel : ViewModelBase
         _bypassProbeFromStart = false;
         SetBypassProbingState(true, 0, 0);
         IsBusy = true;
+        SetFooterLog("Подбор стратегии zapret...");
 
         try
         {
@@ -2286,7 +2472,7 @@ public sealed class MainViewModel : ViewModelBase
             SaveBypassSettings(isActive: IsBypassRunning);
             UpdateBypassUi();
             BypassStatus = $"Стратегия подобрана: {strategy}";
-            StatusMessage = "Стратегия zapret обновлена";
+            SetFooterLog($"Стратегия zapret обновлена: {strategy}");
         }
         catch (Exception ex)
         {
@@ -2296,6 +2482,7 @@ public sealed class MainViewModel : ViewModelBase
             }
 
             UpdateBypassUi();
+            SetFooterLog($"Ошибка подбора стратегии: {ex.Message}");
             MessageBox.Show(ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
@@ -2310,11 +2497,13 @@ public sealed class MainViewModel : ViewModelBase
         if (report.ProbeCurrent is > 0 && report.ProbeTotal is > 0)
         {
             SetBypassProbingState(true, report.ProbeCurrent.Value, report.ProbeTotal.Value);
+            SetFooterLog($"Подбор стратегии {report.ProbeCurrent}/{report.ProbeTotal}...");
         }
 
         if (!string.IsNullOrWhiteSpace(report.StatusMessage))
         {
             BypassStatus = report.StatusMessage;
+            SetFooterLog(report.StatusMessage);
         }
     }
 
@@ -2337,6 +2526,7 @@ public sealed class MainViewModel : ViewModelBase
     private async Task StopBypassAsync()
     {
         IsBusy = true;
+        SetFooterLog("Остановка обхода...");
 
         try
         {
@@ -2345,7 +2535,7 @@ public sealed class MainViewModel : ViewModelBase
             SaveBypassSettings(isActive: false);
             UpdateBypassUi();
             BypassStatus = "Обход: остановлен";
-            StatusMessage = "Обход остановлен";
+            SetFooterLog("Обход остановлен");
         }
         finally
         {
@@ -2455,10 +2645,7 @@ public sealed class MainViewModel : ViewModelBase
         if (_bypassService.IsZapretRunning && BypassEnableZapret)
         {
             UpdateBypassUi();
-            if (!silent)
-            {
-                StatusMessage = "Zapret уже запущен — подключено к существующему процессу";
-            }
+            SetFooterLog("Zapret уже запущен — подключено к существующему процессу");
         }
 
         if (IsBypassRunning)
@@ -2477,6 +2664,7 @@ public sealed class MainViewModel : ViewModelBase
 
                 _settings.TgWsProxyPort = tgPort;
                 IsBusy = true;
+                SetFooterLog("Запуск Telegram-прокси...");
                 try
                 {
                     var progress = new Progress<BypassProgressReport>(HandleBypassProgress);
@@ -2486,9 +2674,11 @@ public sealed class MainViewModel : ViewModelBase
                         progress,
                         CancellationToken.None);
                     ApplyTelegramStartResult();
+                    SetFooterLog("Telegram-прокси запущен");
                 }
                 catch (Exception ex)
                 {
+                    SetFooterLog($"Ошибка запуска Telegram-прокси: {ex.Message}");
                     if (!silent)
                     {
                         MessageBox.Show(ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
@@ -2505,14 +2695,15 @@ public sealed class MainViewModel : ViewModelBase
             SaveBypassSettings(isActive: true);
             UpdateBypassUi();
 
-            if (!silent && _bypassService.IsZapretRunning)
+            if (_bypassService.IsZapretRunning)
             {
-                StatusMessage = "Zapret уже запущен — подключено к существующему процессу";
+                SetFooterLog("Обход восстановлен");
             }
 
             return;
         }
 
+        SetFooterLog("Восстановление обхода...");
         await StartBypassAsync(silent);
     }
 

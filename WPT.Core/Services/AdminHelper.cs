@@ -30,4 +30,34 @@ public static class AdminHelper
         }
     }
 
+    public static bool TryRestartAsAdmin(string? arguments = null)
+    {
+        if (IsRunningAsAdmin())
+        {
+            return true;
+        }
+
+        var exePath = Environment.ProcessPath;
+        if (string.IsNullOrWhiteSpace(exePath))
+        {
+            return true;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = exePath,
+                Arguments = arguments ?? string.Empty,
+                UseShellExecute = true,
+                Verb = "runas"
+            });
+            return false;
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            return true;
+        }
+    }
+
 }

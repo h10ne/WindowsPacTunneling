@@ -53,6 +53,8 @@ public static class AppPaths
 
     public static string ZapretBinDirectory => Path.Combine(ZapretDirectory, "bin");
 
+    public static string ZapretVersionFile => Path.Combine(ZapretDirectory, "version.txt");
+
     public static string TgWsProxySecretFile => Path.Combine(Root, "tg-ws-proxy-secret.txt");
 
     public static void EnsureRoot()

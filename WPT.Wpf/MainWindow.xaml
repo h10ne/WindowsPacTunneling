@@ -116,7 +116,13 @@
 
 
 
-        <Border Grid.Row="1" Grid.ColumnSpan="2" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="16,0" />
+        <Border Grid.Row="1" Grid.ColumnSpan="2" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="16,0">
+
+            <TextBlock Text="{Binding FooterLog}" Style="{StaticResource CaptionText}" VerticalAlignment="Center"
+
+                       TextTrimming="CharacterEllipsis" ToolTip="{Binding FooterLog}" />
+
+        </Border>
 
     </Grid>
 
