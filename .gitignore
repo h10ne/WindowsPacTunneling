@@ -48,6 +48,9 @@ ScaffoldingReadMe.txt
 ~$*
 *~
 CodeCoverage/
+_netch_ref/
+_netch_dl/
+_tools/
 
 # MSBuild Binary and Structured Log
 *.binlog

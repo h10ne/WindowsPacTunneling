@@ -77,6 +77,19 @@ public static partial class SettingsService
         {
             settings.UpdateListsOnStartup = true;
         }
+
+        if (root.TryGetProperty("ProcessModeAmneziaConfig", out var legacyAmneziaElement)
+            && legacyAmneziaElement.ValueKind == JsonValueKind.String
+            && !AmneziaConfigStorage.HasStoredConfig)
+        {
+            var legacyConfig = legacyAmneziaElement.GetString();
+            if (!string.IsNullOrWhiteSpace(legacyConfig)
+                && AmneziaConfigParser.TryParse(legacyConfig, out var wireGuardConfig, out _))
+            {
+                AppPaths.EnsureRoot();
+                File.WriteAllText(AppPaths.ProcessModeAmneziaConfigFile, wireGuardConfig);
+            }
+        }
     }
 
     private static List<string> ParseLegacyQuotedList(string input) =>

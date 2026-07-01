@@ -1,0 +1,117 @@
+<UserControl x:Class="WPT.Wpf.Views.StatusIndicatorsView"
+
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+
+             HorizontalAlignment="Left"
+
+             VerticalAlignment="Bottom">
+
+    <StackPanel Orientation="Vertical" HorizontalAlignment="Left">
+
+        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+
+            <Ellipse Width="8" Height="8" VerticalAlignment="Center">
+
+                <Ellipse.Style>
+
+                    <Style TargetType="Ellipse">
+
+                        <Setter Property="Fill" Value="#FF6B6B6E" />
+
+                        <Style.Triggers>
+
+                            <DataTrigger Binding="{Binding IsProxyHealthy}" Value="True">
+
+                                <Setter Property="Fill" Value="{StaticResource SuccessBrush}" />
+
+                            </DataTrigger>
+
+                            <DataTrigger Binding="{Binding IsProxyUnreachable}" Value="True">
+
+                                <Setter Property="Fill" Value="{StaticResource DangerBrush}" />
+
+                            </DataTrigger>
+
+                        </Style.Triggers>
+
+                    </Style>
+
+                </Ellipse.Style>
+
+            </Ellipse>
+
+            <TextBlock Text="{Binding FooterProxyStatus}" VerticalAlignment="Center" Style="{StaticResource CaptionText}"
+
+                       Margin="8,0,0,0" TextTrimming="CharacterEllipsis" />
+
+        </StackPanel>
+
+        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+
+            <Ellipse Width="8" Height="8" VerticalAlignment="Center">
+
+                <Ellipse.Style>
+
+                    <Style TargetType="Ellipse">
+
+                        <Setter Property="Fill" Value="#FF6B6B6E" />
+
+                        <Style.Triggers>
+
+                            <DataTrigger Binding="{Binding IsBypassRunning}" Value="True">
+
+                                <Setter Property="Fill" Value="{StaticResource SuccessBrush}" />
+
+                            </DataTrigger>
+
+                        </Style.Triggers>
+
+                    </Style>
+
+                </Ellipse.Style>
+
+            </Ellipse>
+
+            <TextBlock Text="{Binding FooterBypassStatus}" VerticalAlignment="Center" Style="{StaticResource CaptionText}"
+
+                       Margin="8,0,0,0" TextTrimming="CharacterEllipsis" />
+
+        </StackPanel>
+
+        <StackPanel Orientation="Horizontal">
+
+            <Ellipse Width="8" Height="8" VerticalAlignment="Center">
+
+                <Ellipse.Style>
+
+                    <Style TargetType="Ellipse">
+
+                        <Setter Property="Fill" Value="#FF6B6B6E" />
+
+                        <Style.Triggers>
+
+                            <DataTrigger Binding="{Binding IsPacActive}" Value="True">
+
+                                <Setter Property="Fill" Value="{StaticResource SuccessBrush}" />
+
+                            </DataTrigger>
+
+                        </Style.Triggers>
+
+                    </Style>
+
+                </Ellipse.Style>
+
+            </Ellipse>
+
+            <TextBlock Text="{Binding FooterRight}" VerticalAlignment="Center" Style="{StaticResource CaptionText}"
+
+                       Margin="8,0,0,0" TextTrimming="CharacterEllipsis" />
+
+        </StackPanel>
+
+    </StackPanel>
+
+</UserControl>

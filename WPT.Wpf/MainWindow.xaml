@@ -12,7 +12,7 @@
 
         Title="{x:Static core:AppBranding.DisplayName}"
 
-        Width="900" Height="700" MinWidth="820" MinHeight="640"
+        Width="900" Height="620" MinWidth="820" MinHeight="560"
 
         WindowStartupLocation="CenterScreen"
 
@@ -21,6 +21,8 @@
     <Window.Resources>
 
         <conv:SectionToVisibilityConverter x:Key="SectionVis" />
+
+        <conv:BoolToVisibilityConverter x:Key="BoolVis" />
 
     </Window.Resources>
 
@@ -36,7 +38,7 @@
 
         <Grid.RowDefinitions>
 
-            <RowDefinition Height="*" MinHeight="520" />
+            <RowDefinition Height="*" MinHeight="460" />
 
             <RowDefinition Height="36" />
 
@@ -46,23 +48,57 @@
 
         <Border Grid.Row="0" Grid.Column="0" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0">
 
-            <StackPanel Margin="0,16,0,0">
+            <Grid>
 
-                <TextBlock Text="{x:Static core:AppBranding.DisplayName}" FontWeight="SemiBold" FontSize="15" Margin="20,0,0,20" />
+                <Grid.RowDefinitions>
 
-                <RadioButton Content="Тунелирование" Style="{StaticResource NavButton}" GroupName="Nav"
+                    <RowDefinition Height="*" />
 
-                             IsChecked="{Binding IsTunnelingPage, Mode=TwoWay}" />
+                    <RowDefinition Height="Auto" />
 
-                <RadioButton Content="Прокси" Style="{StaticResource NavButton}" GroupName="Nav"
+                </Grid.RowDefinitions>
 
-                             IsChecked="{Binding IsProxyPage, Mode=TwoWay}" />
 
-                <RadioButton Content="Настройки" Style="{StaticResource NavButton}" GroupName="Nav"
 
-                             IsChecked="{Binding IsSettingsPage, Mode=TwoWay}" />
+                <StackPanel Grid.Row="0" Margin="0,16,0,0">
 
-            </StackPanel>
+                    <TextBlock Text="{x:Static core:AppBranding.DisplayName}" FontWeight="SemiBold" FontSize="15" Margin="20,0,0,20" />
+
+                    <RadioButton Content="Тунелирование" Style="{StaticResource NavButton}" GroupName="Nav"
+
+                                 IsChecked="{Binding IsTunnelingPage, Mode=TwoWay}" />
+
+                    <RadioButton Content="Прокси" Style="{StaticResource NavButton}" GroupName="Nav"
+
+                                 IsChecked="{Binding IsProxyPage, Mode=TwoWay}" />
+
+                    <RadioButton Content="Обход" Style="{StaticResource NavButton}" GroupName="Nav"
+
+                                 IsChecked="{Binding IsBypassPage, Mode=TwoWay}" />
+
+                    <RadioButton Content="Настройки" Style="{StaticResource NavButton}" GroupName="Nav"
+
+                                 IsChecked="{Binding IsSettingsPage, Mode=TwoWay}" />
+
+                </StackPanel>
+
+
+
+                <StackPanel Grid.Row="1" Margin="20,0,12,16" VerticalAlignment="Bottom">
+
+                    <views:StatusIndicatorsView DataContext="{Binding}" />
+
+                    <Button Content="Доступно обновление" Style="{StaticResource SecondaryButton}"
+
+                            Command="{Binding OpenSettingsForUpdateCommand}" Margin="0,12,0,0"
+
+                            HorizontalAlignment="Left" MinWidth="180"
+
+                            Visibility="{Binding IsAppUpdateAvailable, Converter={StaticResource BoolVis}}" />
+
+                </StackPanel>
+
+            </Grid>
 
         </Border>
 
@@ -76,13 +112,17 @@
 
                                      Visibility="{Binding SelectedSection, Converter={StaticResource SectionVis}, ConverterParameter=0}" />
 
-                <views:ProxyView DataContext="{Binding}" HorizontalAlignment="Stretch" VerticalAlignment="Top"
+                <views:ProxyView DataContext="{Binding}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
 
                                  Visibility="{Binding SelectedSection, Converter={StaticResource SectionVis}, ConverterParameter=1}" />
 
-                <views:SettingsView DataContext="{Binding}" HorizontalAlignment="Stretch" VerticalAlignment="Top"
+                <views:BypassView DataContext="{Binding}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
 
-                                    Visibility="{Binding SelectedSection, Converter={StaticResource SectionVis}, ConverterParameter=2}" />
+                                  Visibility="{Binding SelectedSection, Converter={StaticResource SectionVis}, ConverterParameter=2}" />
+
+                <views:SettingsView DataContext="{Binding}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+
+                                    Visibility="{Binding SelectedSection, Converter={StaticResource SectionVis}, ConverterParameter=3}" />
 
             </Grid>
 
@@ -102,37 +142,13 @@
 
                 </Grid.ColumnDefinitions>
 
-                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Grid.Column="0" Text="{Binding FooterLog}" Style="{StaticResource CaptionText}" VerticalAlignment="Center"
 
-                    <Ellipse Width="8" Height="8" VerticalAlignment="Center">
+                           TextTrimming="CharacterEllipsis" ToolTip="{Binding FooterLog}" />
 
-                        <Ellipse.Style>
+                <TextBlock Grid.Column="1" Text="{Binding AppVersionLabel}" Style="{StaticResource CaptionText}"
 
-                            <Style TargetType="Ellipse">
-
-                                <Setter Property="Fill" Value="#FF6B6B6E" />
-
-                                <Style.Triggers>
-
-                                    <DataTrigger Binding="{Binding IsProxyRunning}" Value="True">
-
-                                        <Setter Property="Fill" Value="{StaticResource SuccessBrush}" />
-
-                                    </DataTrigger>
-
-                                </Style.Triggers>
-
-                            </Style>
-
-                        </Ellipse.Style>
-
-                    </Ellipse>
-
-                    <TextBlock Text="{Binding FooterProxyStatus}" VerticalAlignment="Center" Style="{StaticResource CaptionText}" Margin="8,0,0,0" />
-
-                </StackPanel>
-
-                <TextBlock Grid.Column="1" Text="{Binding FooterRight}" VerticalAlignment="Center" HorizontalAlignment="Right" Style="{StaticResource CaptionText}" />
+                           VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" Margin="16,0,0,0" />
 
             </Grid>
 

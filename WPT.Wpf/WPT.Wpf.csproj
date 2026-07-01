@@ -12,6 +12,7 @@
         <AssemblyName>WPT</AssemblyName>
         <Product>WPT</Product>
         <AssemblyTitle>WPT</AssemblyTitle>
+        <Version>1.1.0</Version>
     </PropertyGroup>
 
     <ItemGroup>
@@ -20,6 +21,13 @@
 
     <ItemGroup>
         <Resource Include="Resources\app.ico" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Include="..\WPT.Core\ThirdParty\Netch\**\*">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <Link>ThirdParty\Netch\%(RecursiveDir)%(Filename)%(Extension)</Link>
+        </None>
     </ItemGroup>
 
 </Project>

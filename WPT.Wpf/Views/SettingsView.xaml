@@ -8,56 +8,111 @@
 
              HorizontalAlignment="Stretch"
 
+             VerticalAlignment="Stretch"
+
              HorizontalContentAlignment="Stretch">
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <Grid>
 
-        <StackPanel HorizontalAlignment="Stretch">
+        <Grid.RowDefinitions>
 
+            <RowDefinition Height="*" />
 
+            <RowDefinition Height="Auto" />
 
-            <TextBlock Text="Запуск" Style="{StaticResource SectionTitle}" Foreground="{StaticResource TextSecondaryBrush}" />
-
-            <CheckBox Content="Запускать вместе со стартом системы" IsChecked="{Binding StartWithWindows}" />
-
-            <CheckBox Content="Запускать прокси со стартом приложения" IsChecked="{Binding StartProxyWithApp}" />
-
-            <CheckBox Content="Запускать свернутым в трей" IsChecked="{Binding StartMinimizedToTray}" />
+        </Grid.RowDefinitions>
 
 
 
-            <TextBlock Text="Уведомления" Style="{StaticResource SectionTitle}" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,16,0,8" />
+        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
 
-            <CheckBox Content="Уведомлять при сворачивании приложения" IsChecked="{Binding NotifyOnMinimizeToTray}" />
-
-
-
-            <TextBlock Text="Данные" Style="{StaticResource SectionTitle}" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,16,0,8" />
-
-            <CheckBox Content="Обновлять списки при запуске приложения" IsChecked="{Binding UpdateListsOnStartup}" Margin="0,0,0,16" />
+            <StackPanel HorizontalAlignment="Stretch">
 
 
 
-            <Button Content="Обновить списки" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left"
+                <TextBlock Text="Запуск" Style="{StaticResource SectionTitle}" Foreground="{StaticResource TextSecondaryBrush}" />
 
-                    Command="{Binding UpdateListsCommand}" Margin="0,0,0,12" MinWidth="180" />
+                <CheckBox Content="Запускать вместе со стартом системы" IsChecked="{Binding StartWithWindows}" />
+
+                <CheckBox Content="Запускать от имени администратора" IsChecked="{Binding RunAsAdministrator}" />
+
+                <CheckBox Content="Запускать прокси со стартом приложения" IsChecked="{Binding StartProxyWithApp}" />
+
+                <CheckBox Content="Запускать обход со стартом приложения" IsChecked="{Binding StartBypassWithApp}"
+
+                          IsEnabled="{Binding IsStartBypassWithAppEnabled}" />
+
+                <CheckBox Content="Запускать свернутым в трей" IsChecked="{Binding StartMinimizedToTray}" />
+
+                <CheckBox Content="Уведомлять при сворачивании приложения" IsChecked="{Binding NotifyOnMinimizeToTray}" />
+
+                <Button Content="Перезапустить от имени администратора" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left"
+
+                        Command="{Binding RestartAsAdminCommand}" Margin="0,12,0,0" MinWidth="280" />
 
 
 
-            <Button Content="Открыть папку данных" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left"
+                <TextBlock Text="Тунелирование" Style="{StaticResource SectionTitle}" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,16,0,8" />
 
-                    Command="{Binding OpenDataFolderCommand}" Margin="0,0,0,12" MinWidth="180" />
+                <CheckBox Content="Обновлять списки при запуске приложения" IsChecked="{Binding UpdateListsOnStartup}" />
 
+                <Button Content="Обновить списки" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left"
 
-
-            <Button Content="Сохранить настройки" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left"
-
-                    Command="{Binding SaveSettingsCommand}" MinWidth="180" />
+                        Command="{Binding UpdateListsCommand}" Margin="0,12,0,0" MinWidth="180" />
 
 
 
-        </StackPanel>
+                <TextBlock Text="Приложение" Style="{StaticResource SectionTitle}" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,16,0,8" />
 
-    </ScrollViewer>
+                <TextBlock Text="{Binding AppUpdateStatus}" Style="{StaticResource CaptionText}" TextWrapping="Wrap" Margin="0,0,0,8" />
+
+                <Button Content="Обновить" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left"
+
+                        Command="{Binding InstallAppUpdateCommand}" MinWidth="180" />
+
+
+                <TextBlock Text="Zapret" Style="{StaticResource SectionTitle}" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,16,0,8" />
+
+                <TextBlock Text="{Binding ZapretUpdateStatus}" Style="{StaticResource CaptionText}" TextWrapping="Wrap" Margin="0,0,0,8" />
+
+                <StackPanel Orientation="Horizontal">
+
+                    <Button Content="Проверить обновления" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left"
+
+                            Command="{Binding CheckZapretUpdateCommand}" MinWidth="180" />
+
+                    <Button Content="Скачать обновление" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left"
+
+                            Command="{Binding DownloadZapretUpdateCommand}" MinWidth="180" Margin="12,0,0,0" />
+
+                </StackPanel>
+
+
+
+                <Button Content="Открыть папку данных" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left"
+
+                        Command="{Binding OpenDataFolderCommand}" Margin="0,24,0,0" MinWidth="180" />
+
+
+
+            </StackPanel>
+
+        </ScrollViewer>
+
+
+
+        <Border Grid.Row="1" Padding="0,12,0,0" Margin="0,8,0,0"
+
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
+
+            <Button Content="Применить" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Right"
+
+                    Command="{Binding SaveSettingsCommand}" Padding="16,10" />
+
+        </Border>
+
+
+
+    </Grid>
 
 </UserControl>

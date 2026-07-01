@@ -164,6 +164,25 @@
 
 
 
+                <Border Style="{StaticResource InfoBar}"
+                        Margin="0,0,0,12"
+                        Visibility="{Binding ShowRussiaInsideRestrictionHint, Converter={StaticResource BoolToVis}}">
+
+                    <StackPanel>
+
+                        <TextBlock Text="Ограничения Russia inside" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,4" />
+
+                        <TextBlock Text="{Binding RussiaInsideRestrictionHint}"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   FontSize="12"
+                                   TextWrapping="Wrap" />
+
+                    </StackPanel>
+
+                </Border>
+
+
+
                 <Border Style="{StaticResource Card}">
 
                     <StackPanel Style="{StaticResource CardContent}" MinWidth="440">

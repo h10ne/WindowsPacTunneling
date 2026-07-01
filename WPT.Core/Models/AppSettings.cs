@@ -28,6 +28,8 @@ public sealed class AppSettings
 
     public bool StartProxyWithApp { get; set; }
 
+    public bool StartProcessModeWithApp { get; set; }
+
     public bool StartMinimizedToTray { get; set; }
 
     public bool NotifyOnMinimizeToTray { get; set; } = true;
@@ -39,4 +41,32 @@ public sealed class AppSettings
     public string? ActivePacHash { get; set; }
 
     public bool RouteAllTrafficThroughProxy { get; set; }
+
+    public string ProcessModeLink { get; set; } = string.Empty;
+
+    public string ProcessModeAmneziaSourceName { get; set; } = string.Empty;
+
+    public ProcessModeConnectionType ProcessModeConnectionType { get; set; }
+
+    public int ProcessModePort { get; set; } = 20808;
+
+    public List<string> ProcessModeApplications { get; set; } = [];
+
+    public bool IsProcessModeActive { get; set; }
+
+    public bool IsBypassActive { get; set; }
+
+    public bool BypassEnableZapret { get; set; } = true;
+
+    public bool BypassEnableTelegram { get; set; } = true;
+
+    public string? SavedZapretStrategy { get; set; }
+
+    public int TgWsProxyPort { get; set; } = 1443;
+
+    public string TgWsProxySecret { get; set; } = string.Empty;
+
+    public bool StartBypassWithApp { get; set; }
+
+    public bool RunAsAdministrator { get; set; }
 }
