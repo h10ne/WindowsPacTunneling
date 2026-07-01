@@ -21,4 +21,13 @@ public static class AdminHelper
         }
     }
 
+    public static void EnsureZapretAdminOrThrow()
+    {
+        if (!IsRunningAsAdmin())
+        {
+            throw new InvalidOperationException(
+                "Обход YouTube/Discord требует запуска WPT от имени администратора.");
+        }
+    }
+
 }

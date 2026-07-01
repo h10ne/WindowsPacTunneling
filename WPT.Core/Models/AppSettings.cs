@@ -53,4 +53,18 @@ public sealed class AppSettings
     public List<string> ProcessModeApplications { get; set; } = [];
 
     public bool IsProcessModeActive { get; set; }
+
+    public bool IsBypassActive { get; set; }
+
+    public bool BypassEnableZapret { get; set; } = true;
+
+    public bool BypassEnableTelegram { get; set; } = true;
+
+    public string? SavedZapretStrategy { get; set; }
+
+    public int TgWsProxyPort { get; set; } = 1443;
+
+    public string TgWsProxySecret { get; set; } = string.Empty;
+
+    public bool StartBypassWithApp { get; set; }
 }

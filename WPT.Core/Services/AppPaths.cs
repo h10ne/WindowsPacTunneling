@@ -49,6 +49,12 @@ public static class AppPaths
     public static string BundledRedirectorDirectory =>
         Path.Combine(AppContext.BaseDirectory, "ThirdParty", "Netch");
 
+    public static string ZapretDirectory => Path.Combine(Root, "zapret");
+
+    public static string ZapretBinDirectory => Path.Combine(ZapretDirectory, "bin");
+
+    public static string TgWsProxySecretFile => Path.Combine(Root, "tg-ws-proxy-secret.txt");
+
     public static void EnsureRoot()
     {
         Directory.CreateDirectory(Root);

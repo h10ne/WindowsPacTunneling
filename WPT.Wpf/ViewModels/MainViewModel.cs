@@ -4,6 +4,7 @@ using System.Windows.Threading;
 using WPT.Core;
 using WPT.Core.Models;
 using WPT.Core.Services;
+using WPT.Core.Services.Bypass;
 using MessageBox = System.Windows.MessageBox;
 using MessageBoxButton = System.Windows.MessageBoxButton;
 using MessageBoxImage = System.Windows.MessageBoxImage;
@@ -17,6 +18,7 @@ public sealed class MainViewModel : ViewModelBase
     private readonly PacHttpServer _pacHttpServer = new();
     private readonly LocalProxyService _localProxyService = new();
     private readonly ProcessModeService _processModeService = new();
+    private readonly BypassService _bypassService = new();
     private readonly AppSettings _settings = SettingsService.Load();
     private readonly HashSet<string> _selectedListIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly DispatcherTimer _dailyUpdateTimer;
@@ -51,6 +53,7 @@ public sealed class MainViewModel : ViewModelBase
     private string _statusMessage = "Готово";
     private string _footerRight = "PAC: выкл";
     private string _footerProxyStatus = "Прокси: остановлен";
+    private string _footerBypassStatus = "Обход: остановлен";
     private string _footerProcessModeStatus = "PM: остановлен";
     private string _proxyState = "Прокси остановлен";
     private int _selectedSection;
@@ -63,6 +66,18 @@ public sealed class MainViewModel : ViewModelBase
     private bool _updateListsOnStartup;
     private bool _routeAllTrafficThroughProxy;
     private bool _showRussiaInsideRestrictionHint;
+    private bool _bypassEnableZapret = true;
+    private bool _bypassEnableTelegram = true;
+    private string _bypassStatus = "Обход: остановлен";
+    private string _bypassActiveStrategy = string.Empty;
+    private string _telegramProxyLink = string.Empty;
+    private string _tgWsProxyPort = "1443";
+    private string _bypassInfoText = string.Empty;
+    private bool _telegramLinkCopiedToClipboard;
+    private bool _isBypassProbingStrategy;
+    private int _bypassProbeCurrent;
+    private int _bypassProbeTotal;
+    private bool _bypassProbeFromStart;
     private ServiceListDefinition? _selectedListToAdd;
 
     public MainViewModel()
@@ -92,6 +107,8 @@ public sealed class MainViewModel : ViewModelBase
         ShowPacCommand = new RelayCommand(async () => await ShowPacAsync(), () => !IsBusy);
         DisablePacCommand = new RelayCommand(DisablePac, () => !IsBusy && IsPacActive);
         ToggleProxyCommand = new RelayCommand(async () => await ToggleProxyAsync(), () => !IsBusy);
+        ToggleBypassCommand = new RelayCommand(async () => await ToggleBypassAsync(), () => CanToggleBypass);
+        ProbeBypassStrategyCommand = new RelayCommand(async () => await ProbeBypassStrategyAsync(), () => CanProbeBypassStrategy);
         AddListCommand = new RelayCommand(AddSelectedList);
         RemoveListCommand = new RelayCommand(p => RemoveSelectedList((ListChipItem)p!));
         AddDomainCommand = new RelayCommand(AddCustomDomain);
@@ -277,6 +294,7 @@ public sealed class MainViewModel : ViewModelBase
 
             OnPropertyChanged(nameof(IsTunnelingPage));
             OnPropertyChanged(nameof(IsProxyPage));
+            OnPropertyChanged(nameof(IsBypassPage));
             OnPropertyChanged(nameof(IsSettingsPage));
         }
     }
@@ -293,10 +311,16 @@ public sealed class MainViewModel : ViewModelBase
         set { if (value) SelectedSection = 1; }
     }
 
-    public bool IsSettingsPage
+    public bool IsBypassPage
     {
         get => SelectedSection == 2;
         set { if (value) SelectedSection = 2; }
+    }
+
+    public bool IsSettingsPage
+    {
+        get => SelectedSection == 3;
+        set { if (value) SelectedSection = 3; }
     }
 
     public string StatusMessage
@@ -315,6 +339,12 @@ public sealed class MainViewModel : ViewModelBase
     {
         get => _footerProxyStatus;
         set => SetProperty(ref _footerProxyStatus, value);
+    }
+
+    public string FooterBypassStatus
+    {
+        get => _footerBypassStatus;
+        set => SetProperty(ref _footerBypassStatus, value);
     }
 
     public string FooterProcessModeStatus
@@ -338,6 +368,9 @@ public sealed class MainViewModel : ViewModelBase
             {
                 OnPropertyChanged(nameof(IsProxyEditingEnabled));
                 OnPropertyChanged(nameof(IsProcessModeEditingEnabled));
+                OnPropertyChanged(nameof(IsBypassEditingEnabled));
+                OnPropertyChanged(nameof(IsTgWsProxyPortEditingEnabled));
+                NotifyBypassCommandState();
                 RelayCommand.RaiseAllCanExecuteChanged();
             }
         }
@@ -374,6 +407,145 @@ public sealed class MainViewModel : ViewModelBase
     public bool IsProcessModeEditingEnabled => !IsProcessModeRunning && !IsBusy;
 
     public string ProxyToggleLabel => IsProxyRunning ? "Остановить" : "Запустить";
+
+    public bool IsBypassRunning => _bypassService.IsZapretRunning || _bypassService.IsTelegramRunning;
+
+    public bool IsBypassZapretRunning => _bypassService.IsZapretRunning;
+
+    public bool IsBypassTelegramRunning => _bypassService.IsTelegramRunning;
+
+    public bool IsBypassProbingStrategy => _isBypassProbingStrategy;
+
+    public bool IsBypassEditingEnabled => !IsBypassRunning && !IsBypassProbingStrategy && !IsBusy;
+
+    public bool IsTgWsProxyPortEditingEnabled => !IsBypassTelegramRunning && !IsBypassProbingStrategy && !IsBusy;
+
+    public string BypassToggleLabel
+    {
+        get
+        {
+            if (IsBypassRunning)
+            {
+                return "Остановить обход";
+            }
+
+            if (IsBypassProbingStrategy && _bypassProbeFromStart)
+            {
+                return _bypassProbeTotal > 0
+                    ? $"Подбор стратегии {_bypassProbeCurrent}/{_bypassProbeTotal}"
+                    : "Подбор стратегии...";
+            }
+
+            return "Запустить обход";
+        }
+    }
+
+    public string BypassProbeLabel
+    {
+        get
+        {
+            if (IsBypassProbingStrategy)
+            {
+                return _bypassProbeTotal > 0
+                    ? $"Подбор {_bypassProbeCurrent}/{_bypassProbeTotal}"
+                    : "Подбор стратегии...";
+            }
+
+            return "Подобрать стратегию";
+        }
+    }
+
+    public bool CanStartBypass =>
+        !IsBusy
+        && !IsBypassRunning
+        && !IsBypassProbingStrategy
+        && (BypassEnableZapret || BypassEnableTelegram);
+
+    public bool CanToggleBypass => !IsBypassProbingStrategy && !IsBusy && (IsBypassRunning || CanStartBypass);
+
+    public bool CanProbeBypassStrategy => BypassEnableZapret && !IsBusy && !IsBypassProbingStrategy;
+
+    public bool BypassEnableZapret
+    {
+        get => _bypassEnableZapret;
+        set
+        {
+            if (SetProperty(ref _bypassEnableZapret, value))
+            {
+                NotifyBypassCommandState();
+                UpdateBypassInfoText();
+            }
+        }
+    }
+
+    public bool BypassEnableTelegram
+    {
+        get => _bypassEnableTelegram;
+        set
+        {
+            if (SetProperty(ref _bypassEnableTelegram, value))
+            {
+                NotifyBypassCommandState();
+                UpdateBypassInfoText();
+            }
+        }
+    }
+
+    public string BypassStatus
+    {
+        get => _bypassStatus;
+        set => SetProperty(ref _bypassStatus, value);
+    }
+
+    public string BypassActiveStrategy
+    {
+        get => _bypassActiveStrategy;
+        set
+        {
+            if (SetProperty(ref _bypassActiveStrategy, value))
+            {
+                OnPropertyChanged(nameof(BypassStrategyDisplay));
+            }
+        }
+    }
+
+    public string TgWsProxyPort
+    {
+        get => _tgWsProxyPort;
+        set => SetProperty(ref _tgWsProxyPort, value);
+    }
+
+    public string BypassInfoText
+    {
+        get => _bypassInfoText;
+        private set
+        {
+            if (SetProperty(ref _bypassInfoText, value))
+            {
+                OnPropertyChanged(nameof(IsBypassInfoTextVisible));
+            }
+        }
+    }
+
+    public bool IsBypassInfoTextVisible => !string.IsNullOrWhiteSpace(BypassInfoText);
+
+    public bool HasZapretStrategy => !string.IsNullOrWhiteSpace(_settings.SavedZapretStrategy);
+
+    public string BypassStrategyDisplay => HasZapretStrategy
+        ? _settings.SavedZapretStrategy!
+        : "не подобрана";
+
+    public string TelegramProxyLink
+    {
+        get => _telegramProxyLink;
+        set
+        {
+            if (SetProperty(ref _telegramProxyLink, value))
+            {
+                RelayCommand.RaiseAllCanExecuteChanged();
+            }
+        }
+    }
 
     public string ProcessModeToggleLabel => IsProcessModeRunning ? "Остановить" : "Запустить";
 
@@ -442,6 +614,10 @@ public sealed class MainViewModel : ViewModelBase
     public RelayCommand DisablePacCommand { get; }
 
     public RelayCommand ToggleProxyCommand { get; }
+
+    public RelayCommand ToggleBypassCommand { get; }
+
+    public RelayCommand ProbeBypassStrategyCommand { get; }
 
     public RelayCommand AddListCommand { get; }
 
@@ -531,6 +707,15 @@ public sealed class MainViewModel : ViewModelBase
             {
                 StatusMessage = "PAC был активен. Нажмите «Применить» для повторной активации.";
             }
+
+            if (_settings.IsBypassActive)
+            {
+                await RestoreBypassAsync(silent: true);
+            }
+            else
+            {
+                TryAdoptBypassState();
+            }
         }
         finally
         {
@@ -545,6 +730,7 @@ public sealed class MainViewModel : ViewModelBase
         UpdateProcessModePreferences();
         SaveProxySettings(_localProxyService.IsRunning);
         SaveProcessModeSettings(_processModeService.IsRunning);
+        SaveBypassSettings(IsBypassRunning);
     }
 
     public async Task ApplyFromTrayAsync()
@@ -560,6 +746,7 @@ public sealed class MainViewModel : ViewModelBase
             SaveProxySettings(isActive: false);
             ResetProxyHealth();
             UpdateProxyUi();
+            StopBypassOnExit();
         }
         catch
         {
@@ -580,6 +767,19 @@ public sealed class MainViewModel : ViewModelBase
         }
     }
 
+    public void StopBypassOnExit()
+    {
+        try
+        {
+            _bypassService.StopAsync(BypassEnableZapret, BypassEnableTelegram).ConfigureAwait(false).GetAwaiter().GetResult();
+            SaveBypassSettings(isActive: false);
+            UpdateBypassUi();
+        }
+        catch
+        {
+        }
+    }
+
     public void Shutdown()
     {
         try
@@ -587,6 +787,7 @@ public sealed class MainViewModel : ViewModelBase
             _pacHttpServer.Stop();
             StopLocalProxyOnExit();
             StopProcessModeOnExit();
+            StopBypassOnExit();
             SaveUiState();
         }
         catch
@@ -597,6 +798,7 @@ public sealed class MainViewModel : ViewModelBase
         _pacHttpServer.Dispose();
         _localProxyService.Dispose();
         _processModeService.Dispose();
+        _bypassService.DisposeAsync().AsTask().GetAwaiter().GetResult();
     }
 
     private void LoadFromSettings()
@@ -653,6 +855,15 @@ public sealed class MainViewModel : ViewModelBase
         {
             _localProxyService.Prepare(localPort);
         }
+
+        BypassEnableZapret = _settings.BypassEnableZapret;
+        BypassEnableTelegram = _settings.BypassEnableTelegram;
+        BypassActiveStrategy = _settings.SavedZapretStrategy ?? string.Empty;
+        TgWsProxyPort = _settings.TgWsProxyPort.ToString();
+        TelegramProxyLink = BuildTelegramProxyLinkPreview(_settings.TgWsProxyPort, _settings.TgWsProxySecret);
+        TryAdoptBypassState();
+        UpdateBypassInfoText();
+        NotifyBypassCommandState();
 
         ProcessModeLink = _settings.ProcessModeLink;
         ProcessModeConnectionType = _settings.ProcessModeConnectionType;
@@ -1913,5 +2124,430 @@ public sealed class MainViewModel : ViewModelBase
     private void UpdateFooter()
     {
         FooterRight = WindowsProxySettings.IsPacEnabled(out _) ? "PAC: вкл" : "PAC: выкл";
+    }
+
+    private async Task ToggleBypassAsync()
+    {
+        if (IsBypassRunning)
+        {
+            await StopBypassAsync();
+            return;
+        }
+
+        await StartBypassAsync();
+    }
+
+    private async Task StartBypassAsync(bool silent = false)
+    {
+        if (IsBypassRunning)
+        {
+            if (BypassEnableTelegram && !_bypassService.IsTelegramRunning)
+            {
+                if (!InputParser.TryParsePort(TgWsProxyPort, out var resumeTgPort, out var resumePortError))
+                {
+                    if (!silent)
+                    {
+                        MessageBox.Show(resumePortError, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    }
+
+                    return;
+                }
+
+                _settings.TgWsProxyPort = resumeTgPort;
+                IsBusy = true;
+                try
+                {
+                    var progress = new Progress<BypassProgressReport>(HandleBypassProgress);
+                    await _bypassService.StartTelegramAsync(
+                        resumeTgPort,
+                        _settings.TgWsProxySecret,
+                        progress,
+                        CancellationToken.None);
+                    ApplyTelegramStartResult();
+                    SaveBypassSettings(isActive: true);
+                    UpdateBypassUi();
+                }
+                catch (Exception ex)
+                {
+                    if (!silent)
+                    {
+                        MessageBox.Show(ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
+                }
+                finally
+                {
+                    IsBusy = false;
+                }
+            }
+
+            return;
+        }
+
+        if (!BypassEnableZapret && !BypassEnableTelegram)
+        {
+            if (!silent)
+            {
+                MessageBox.Show(
+                    "Выберите хотя бы один сервис: YouTube/Discord или Telegram.",
+                    "Ошибка",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
+
+            return;
+        }
+
+        if (!InputParser.TryParsePort(TgWsProxyPort, out var tgPort, out var portError))
+        {
+            if (!silent)
+            {
+                MessageBox.Show(portError, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+
+            return;
+        }
+
+        _settings.TgWsProxyPort = tgPort;
+
+        if (BypassEnableZapret && !HasZapretStrategy)
+        {
+            _bypassProbeFromStart = true;
+            SetBypassProbingState(true, 0, 0);
+        }
+
+        IsBusy = true;
+
+        try
+        {
+            var progress = new Progress<BypassProgressReport>(HandleBypassProgress);
+            await _bypassService.StartAsync(
+                BypassEnableZapret,
+                BypassEnableTelegram,
+                _settings.SavedZapretStrategy,
+                tgPort,
+                _settings.TgWsProxySecret,
+                progress,
+                CancellationToken.None);
+
+            if (BypassEnableZapret && !string.IsNullOrWhiteSpace(_bypassService.ActiveZapretStrategy))
+            {
+                _settings.SavedZapretStrategy = _bypassService.ActiveZapretStrategy;
+            }
+
+            if (BypassEnableTelegram && !string.IsNullOrWhiteSpace(_bypassService.TelegramSecret))
+            {
+                ApplyTelegramStartResult();
+            }
+
+            SaveBypassSettings(isActive: true);
+            UpdateBypassUi();
+
+            if (!silent)
+            {
+                StatusMessage = "Обход запущен";
+            }
+        }
+        catch (Exception ex)
+        {
+            await _bypassService.StopAsync(BypassEnableZapret, BypassEnableTelegram);
+            UpdateBypassUi();
+            if (!silent)
+            {
+                MessageBox.Show(ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+        finally
+        {
+            _bypassProbeFromStart = false;
+            SetBypassProbingState(false, 0, 0);
+            IsBusy = false;
+        }
+    }
+
+    private async Task ProbeBypassStrategyAsync()
+    {
+        var wasZapretRunning = _bypassService.IsZapretRunning;
+        _bypassProbeFromStart = false;
+        SetBypassProbingState(true, 0, 0);
+        IsBusy = true;
+
+        try
+        {
+            var progress = new Progress<BypassProgressReport>(HandleBypassProgress);
+            var preferred = _bypassService.ActiveZapretStrategy ?? _settings.SavedZapretStrategy;
+            var strategy = await _bypassService.ProbeStrategyAsync(preferred, progress, CancellationToken.None);
+            _settings.SavedZapretStrategy = strategy;
+
+            if (!wasZapretRunning)
+            {
+                await _bypassService.StopAsync(stopZapret: true, stopTelegram: false);
+            }
+
+            SaveBypassSettings(isActive: IsBypassRunning);
+            UpdateBypassUi();
+            BypassStatus = $"Стратегия подобрана: {strategy}";
+            StatusMessage = "Стратегия zapret обновлена";
+        }
+        catch (Exception ex)
+        {
+            if (!wasZapretRunning && _bypassService.IsZapretRunning)
+            {
+                await _bypassService.StopAsync(stopZapret: true, stopTelegram: false);
+            }
+
+            UpdateBypassUi();
+            MessageBox.Show(ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            SetBypassProbingState(false, 0, 0);
+            IsBusy = false;
+        }
+    }
+
+    private void HandleBypassProgress(BypassProgressReport report)
+    {
+        if (report.ProbeCurrent is > 0 && report.ProbeTotal is > 0)
+        {
+            SetBypassProbingState(true, report.ProbeCurrent.Value, report.ProbeTotal.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(report.StatusMessage))
+        {
+            BypassStatus = report.StatusMessage;
+        }
+    }
+
+    private void SetBypassProbingState(bool isProbing, int current, int total)
+    {
+        _isBypassProbingStrategy = isProbing;
+        _bypassProbeCurrent = current;
+        _bypassProbeTotal = total;
+        OnPropertyChanged(nameof(IsBypassProbingStrategy));
+        OnPropertyChanged(nameof(IsBypassEditingEnabled));
+        OnPropertyChanged(nameof(IsTgWsProxyPortEditingEnabled));
+        OnPropertyChanged(nameof(BypassToggleLabel));
+        OnPropertyChanged(nameof(BypassProbeLabel));
+        OnPropertyChanged(nameof(CanStartBypass));
+        OnPropertyChanged(nameof(CanToggleBypass));
+        OnPropertyChanged(nameof(CanProbeBypassStrategy));
+        RelayCommand.RaiseAllCanExecuteChanged();
+    }
+
+    private async Task StopBypassAsync()
+    {
+        IsBusy = true;
+
+        try
+        {
+            await _bypassService.StopAsync(BypassEnableZapret, BypassEnableTelegram);
+            _telegramLinkCopiedToClipboard = false;
+            SaveBypassSettings(isActive: false);
+            UpdateBypassUi();
+            BypassStatus = "Обход: остановлен";
+            StatusMessage = "Обход остановлен";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private void UpdateBypassUi()
+    {
+        BypassActiveStrategy = _bypassService.ActiveZapretStrategy ?? _settings.SavedZapretStrategy ?? string.Empty;
+        TelegramProxyLink = _bypassService.IsTelegramRunning
+            ? _bypassService.TelegramProxyLink
+            : BuildTelegramProxyLinkPreview(_settings.TgWsProxyPort, _settings.TgWsProxySecret);
+        BypassStatus = IsBypassRunning ? "Обход: активен" : "Обход: остановлен";
+
+        if (!IsBypassRunning)
+        {
+            FooterBypassStatus = "Обход: остановлен";
+        }
+        else if (_bypassService.IsZapretRunning && _bypassService.IsTelegramRunning)
+        {
+            FooterBypassStatus = "Обход: zapret + TG";
+        }
+        else if (_bypassService.IsZapretRunning)
+        {
+            var strategy = BypassActiveStrategy;
+            FooterBypassStatus = string.IsNullOrWhiteSpace(strategy)
+                ? "Обход: zapret"
+                : $"Обход: {strategy}";
+        }
+        else
+        {
+            FooterBypassStatus = "Обход: Telegram";
+        }
+
+        UpdateBypassInfoText();
+        NotifyBypassCommandState();
+        OnPropertyChanged(nameof(IsBypassRunning));
+        OnPropertyChanged(nameof(IsBypassZapretRunning));
+        OnPropertyChanged(nameof(IsBypassTelegramRunning));
+        OnPropertyChanged(nameof(IsBypassEditingEnabled));
+        OnPropertyChanged(nameof(IsTgWsProxyPortEditingEnabled));
+        OnPropertyChanged(nameof(BypassToggleLabel));
+    }
+
+    private void UpdateBypassInfoText()
+    {
+        var parts = new List<string>();
+        if (BypassEnableZapret)
+        {
+            parts.Add("Для YouTube и Discord WPT нужно запустить от имени администратора.");
+        }
+
+        if (IsBypassTelegramRunning && _telegramLinkCopiedToClipboard && !string.IsNullOrWhiteSpace(TelegramProxyLink))
+        {
+            parts.Add("Ссылка tg://proxy в буфере обмена — в Telegram Desktop: Настройки → Продвинутые → Тип соединения → добавить MTProto-прокси.");
+        }
+
+        BypassInfoText = string.Join(" ", parts);
+    }
+
+    private void NotifyBypassCommandState()
+    {
+        OnPropertyChanged(nameof(HasZapretStrategy));
+        OnPropertyChanged(nameof(CanStartBypass));
+        OnPropertyChanged(nameof(CanToggleBypass));
+        OnPropertyChanged(nameof(CanProbeBypassStrategy));
+        OnPropertyChanged(nameof(BypassProbeLabel));
+        OnPropertyChanged(nameof(BypassStrategyDisplay));
+        RelayCommand.RaiseAllCanExecuteChanged();
+    }
+
+    private void CopyTelegramProxyLinkToClipboard()
+    {
+        if (string.IsNullOrWhiteSpace(TelegramProxyLink))
+        {
+            return;
+        }
+
+        System.Windows.Clipboard.SetText(TelegramProxyLink);
+        _telegramLinkCopiedToClipboard = true;
+        UpdateBypassInfoText();
+    }
+
+    private void ApplyTelegramStartResult()
+    {
+        if (string.IsNullOrWhiteSpace(_bypassService.TelegramSecret))
+        {
+            return;
+        }
+
+        _settings.TgWsProxySecret = _bypassService.TelegramSecret;
+        TelegramProxyLink = _bypassService.TelegramProxyLink;
+        CopyTelegramProxyLinkToClipboard();
+    }
+
+    private void TryAdoptBypassState()
+    {
+        _bypassService.TryAdoptExisting(_settings.SavedZapretStrategy);
+        UpdateBypassUi();
+    }
+
+    private async Task RestoreBypassAsync(bool silent = false)
+    {
+        TryAdoptBypassState();
+
+        if (_bypassService.IsZapretRunning && BypassEnableZapret)
+        {
+            UpdateBypassUi();
+            if (!silent)
+            {
+                StatusMessage = "Zapret уже запущен — подключено к существующему процессу";
+            }
+        }
+
+        if (IsBypassRunning)
+        {
+            if (BypassEnableTelegram && !_bypassService.IsTelegramRunning)
+            {
+                if (!InputParser.TryParsePort(TgWsProxyPort, out var tgPort, out var portError))
+                {
+                    if (!silent)
+                    {
+                        MessageBox.Show(portError, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    }
+
+                    return;
+                }
+
+                _settings.TgWsProxyPort = tgPort;
+                IsBusy = true;
+                try
+                {
+                    var progress = new Progress<BypassProgressReport>(HandleBypassProgress);
+                    await _bypassService.StartTelegramAsync(
+                        tgPort,
+                        _settings.TgWsProxySecret,
+                        progress,
+                        CancellationToken.None);
+                    ApplyTelegramStartResult();
+                }
+                catch (Exception ex)
+                {
+                    if (!silent)
+                    {
+                        MessageBox.Show(ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
+
+                    return;
+                }
+                finally
+                {
+                    IsBusy = false;
+                }
+            }
+
+            SaveBypassSettings(isActive: true);
+            UpdateBypassUi();
+
+            if (!silent && _bypassService.IsZapretRunning)
+            {
+                StatusMessage = "Zapret уже запущен — подключено к существующему процессу";
+            }
+
+            return;
+        }
+
+        await StartBypassAsync(silent);
+    }
+
+    private void SaveBypassSettings(bool isActive)
+    {
+        _settings.BypassEnableZapret = BypassEnableZapret;
+        _settings.BypassEnableTelegram = BypassEnableTelegram;
+        _settings.IsBypassActive = isActive;
+
+        if (InputParser.TryParsePort(TgWsProxyPort, out var tgPort, out _))
+        {
+            _settings.TgWsProxyPort = tgPort;
+        }
+
+        if (!string.IsNullOrWhiteSpace(_bypassService.ActiveZapretStrategy))
+        {
+            _settings.SavedZapretStrategy = _bypassService.ActiveZapretStrategy;
+        }
+
+        if (!string.IsNullOrWhiteSpace(_bypassService.TelegramSecret))
+        {
+            _settings.TgWsProxySecret = _bypassService.TelegramSecret;
+        }
+
+        SettingsService.Save(_settings);
+        NotifyBypassCommandState();
+    }
+
+    private static string BuildTelegramProxyLinkPreview(int port, string secret)
+    {
+        if (string.IsNullOrWhiteSpace(secret))
+        {
+            return string.Empty;
+        }
+
+        return $"tg://proxy?server=127.0.0.1&port={port}&secret=dd{secret}";
     }
 }
