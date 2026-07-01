@@ -13,33 +13,16 @@ public static class AmneziaBoxInstaller
         File.Exists(CapabilityMarkerPath) &&
         string.Equals(File.ReadAllText(CapabilityMarkerPath).Trim(), CapabilityMarker, StringComparison.Ordinal);
 
-    public static async Task EnsureInstalledAsync(IProgress<string>? progress, CancellationToken cancellationToken)
+    public static Task EnsureInstalledAsync(IProgress<string>? progress, CancellationToken cancellationToken)
     {
         if (IsInstalled())
         {
-            return;
+            return Task.CompletedTask;
         }
 
-        if (File.Exists(ExecutablePath))
-        {
-            progress?.Report("Обновление amnezia-box...");
-            File.Delete(ExecutablePath);
-        }
-
-        AppPaths.EnsureRoot();
-        Directory.CreateDirectory(AppPaths.BinDirectory);
-
-        var bundled = Path.Combine(AppContext.BaseDirectory, "ThirdParty", "AmneziaBox", "amnezia-box.exe");
-        if (File.Exists(bundled))
-        {
-            progress?.Report("Копирование amnezia-box...");
-            File.Copy(bundled, ExecutablePath, overwrite: true);
-            await File.WriteAllTextAsync(CapabilityMarkerPath, CapabilityMarker, cancellationToken);
-            return;
-        }
-
+        cancellationToken.ThrowIfCancellationRequested();
         throw new InvalidOperationException(
-            "Не найден amnezia-box.exe. Пересоберите WPT или положите amnezia-box.exe в ThirdParty/AmneziaBox.");
+            "AmneziaBox пока не поставляется с приложением. Компонент будет доступен в следующих версиях.");
     }
 
 }

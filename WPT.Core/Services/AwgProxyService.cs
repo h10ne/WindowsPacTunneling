@@ -358,13 +358,7 @@ public sealed class AwgProxyService : IDisposable
 
     private static string ResolveExecutablePath()
     {
-        if (AmneziaBoxInstaller.IsInstalled())
-        {
-            return AmneziaBoxInstaller.ExecutablePath;
-        }
-
-        var bundled = Path.Combine(AppContext.BaseDirectory, "ThirdParty", "AmneziaBox", "amnezia-box.exe");
-        return File.Exists(bundled) ? bundled : AmneziaBoxInstaller.ExecutablePath;
+        return AmneziaBoxInstaller.ExecutablePath;
     }
 
     private static async Task<bool> WaitForPortAsync(int port, Process process, CancellationToken cancellationToken)
