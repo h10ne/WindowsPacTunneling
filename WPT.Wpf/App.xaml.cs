@@ -14,6 +14,8 @@ public partial class App : System.Windows.Application
 
     protected override void OnStartup(System.Windows.StartupEventArgs e)
     {
+        AppLog.Initialize();
+
         if (!IsElevatedLaunch(e.Args))
         {
             var settings = SettingsService.Load();
@@ -37,6 +39,7 @@ public partial class App : System.Windows.Application
             mainWindow.StopLocalProxyOnExit();
         }
 
+        AppLog.Close();
         base.OnExit(e);
     }
 

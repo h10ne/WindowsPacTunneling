@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http;
 using System.Text;
 using WPT.Core.Models;
 
@@ -16,7 +17,8 @@ public sealed class DomainListService : IDisposable
 
     public DomainListService()
     {
-        _httpClient = new HttpClient
+        var handler = new HttpClientHandler { UseProxy = false };
+        _httpClient = new HttpClient(handler)
         {
             Timeout = TimeSpan.FromMinutes(2)
         };
@@ -66,6 +68,7 @@ public sealed class DomainListService : IDisposable
                 catch (Exception ex)
                 {
                     failed++;
+                    AppLog.Error(ex, $"Ошибка загрузки списка {file}");
                     ReportStatus($"Ошибка загрузки {file}: {ex.Message}");
                 }
             }

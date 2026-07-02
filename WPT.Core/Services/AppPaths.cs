@@ -57,11 +57,14 @@ public static class AppPaths
 
     public static string TgWsProxySecretFile => Path.Combine(Root, "tg-ws-proxy-secret.txt");
 
+    public static string LogsDirectory => Path.Combine(Root, "logs");
+
     public static void EnsureRoot()
     {
         Directory.CreateDirectory(Root);
         Directory.CreateDirectory(ListsDirectory);
         Directory.CreateDirectory(BinDirectory);
+        Directory.CreateDirectory(LogsDirectory);
     }
 
 }

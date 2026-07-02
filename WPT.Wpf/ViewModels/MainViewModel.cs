@@ -135,6 +135,7 @@ public sealed class MainViewModel : ViewModelBase
         OpenDataFolderCommand = new RelayCommand(OpenDataFolder);
         RestartAsAdminCommand = new RelayCommand(RestartAsAdmin, () => IsRestartAsAdminEnabled && !IsBusy);
         CheckZapretUpdateCommand = new RelayCommand(async () => await CheckZapretUpdateAsync(), () => !IsBusy);
+        CheckAppUpdateCommand = new RelayCommand(async () => await CheckAppUpdateManualAsync(), () => !IsBusy);
         DownloadZapretUpdateCommand = new RelayCommand(async () => await DownloadZapretUpdateAsync(), () => !IsBusy && CanDownloadZapretUpdate);
         InstallAppUpdateCommand = new RelayCommand(async () => await InstallAppUpdateAsync(), () => !IsBusy && IsAppUpdateAvailable);
         OpenSettingsForUpdateCommand = new RelayCommand(OpenSettingsForUpdate);
@@ -149,8 +150,9 @@ public sealed class MainViewModel : ViewModelBase
             {
                 await _domainListService.EnsureUpdatedAsync();
             }
-            catch
+            catch (Exception ex)
             {
+                AppLog.Error(ex, "Ошибка фонового обновления списков доменов");
             }
         };
         _dailyUpdateTimer.Start();
@@ -737,6 +739,8 @@ public sealed class MainViewModel : ViewModelBase
 
     public RelayCommand CheckZapretUpdateCommand { get; }
 
+    public RelayCommand CheckAppUpdateCommand { get; }
+
     public RelayCommand DownloadZapretUpdateCommand { get; }
 
     public RelayCommand InstallAppUpdateCommand { get; }
@@ -746,6 +750,7 @@ public sealed class MainViewModel : ViewModelBase
     public async Task InitializeAsync()
     {
         IsBusy = true;
+        AppLog.Info($"Инициализация UI (admin={AdminHelper.IsRunningAsAdmin()})");
         await CheckAppUpdateAsync(silent: true);
         SetFooterLog("Инициализация приложения...");
 
@@ -1263,6 +1268,7 @@ public sealed class MainViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
+            AppLog.Error(ex, "Ошибка восстановления Process Mode");
             UpdateProcessModeUi();
             SetFooterLog($"Ошибка восстановления Process Mode: {ex.Message}");
             if (!silent)
@@ -1348,6 +1354,7 @@ public sealed class MainViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
+            AppLog.Error(ex, "Ошибка запуска Process Mode");
             UpdateProcessModeUi();
             SetFooterLog($"Ошибка запуска Process Mode: {ex.Message}");
             if (!silent)
@@ -1524,6 +1531,7 @@ public sealed class MainViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
+            AppLog.Error(ex, "Ошибка запуска локального прокси");
             ResetProxyHealth();
             UpdateProxyUi();
             SetFooterLog($"Ошибка запуска прокси: {ex.Message}");
@@ -1762,6 +1770,7 @@ public sealed class MainViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
+            AppLog.Error(ex, "Ошибка обновления списков доменов");
             SetFooterLog($"Не удалось обновить списки: {ex.Message}");
             if (showWarningOnError)
             {
@@ -1810,6 +1819,7 @@ public sealed class MainViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
+            AppLog.Error(ex, "Ошибка подготовки PAC-файла");
             MessageBox.Show(ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
@@ -1862,6 +1872,7 @@ public sealed class MainViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
+            AppLog.Error(ex, "Ошибка применения PAC");
             SetFooterLog($"Ошибка применения PAC: {ex.Message}");
         }
         finally
@@ -1931,6 +1942,7 @@ public sealed class MainViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
+            AppLog.Error(ex, "Ошибка отключения PAC");
             MessageBox.Show(ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
@@ -1951,6 +1963,7 @@ public sealed class MainViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
+            AppLog.Error(ex, "Ошибка сохранения настроек");
             MessageBox.Show(ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
@@ -1970,6 +1983,21 @@ public sealed class MainViewModel : ViewModelBase
         SelectedSection = 3;
     }
 
+    private async Task CheckAppUpdateManualAsync()
+    {
+        IsBusy = true;
+        SetFooterLog("Проверка обновлений приложения...");
+
+        try
+        {
+            await CheckAppUpdateAsync(silent: false);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
     private async Task CheckAppUpdateAsync(bool silent)
     {
         try
@@ -1979,13 +2007,14 @@ public sealed class MainViewModel : ViewModelBase
             _latestAppVersionLabel = result.LatestVersionLabel;
             AppUpdateStatus = result.Message;
 
-            if (!silent && result.UpdateAvailable)
+            if (!silent)
             {
                 SetFooterLog(result.Message);
             }
         }
         catch (Exception ex)
         {
+            AppLog.Error(ex, "Не удалось проверить обновления приложения");
             IsAppUpdateAvailable = false;
             AppUpdateStatus = $"Не удалось проверить обновления. Текущая версия: {AppVersionLabel}.";
 
@@ -2040,6 +2069,7 @@ public sealed class MainViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
+            AppLog.Error(ex, "Ошибка установки обновления приложения");
             var message = ex.InnerException?.Message ?? ex.Message;
             AppUpdateStatus = $"Ошибка обновления: {message}";
             SetFooterLog(AppUpdateStatus);
@@ -2081,6 +2111,7 @@ public sealed class MainViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
+            AppLog.Error(ex, "Не удалось проверить обновления zapret");
             CanDownloadZapretUpdate = false;
             ZapretUpdateStatus = $"Не удалось проверить обновления: {ex.Message}";
             SetFooterLog(ZapretUpdateStatus);
@@ -2140,6 +2171,7 @@ public sealed class MainViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
+            AppLog.Error(ex, "Ошибка обновления zapret");
             var message = ex.InnerException?.Message ?? ex.Message;
             ZapretUpdateStatus = $"Ошибка обновления: {message}";
             SetFooterLog(ZapretUpdateStatus);
@@ -2426,6 +2458,7 @@ public sealed class MainViewModel : ViewModelBase
             return;
         }
 
+        AppLog.Info(message);
         FooterLog = message;
     }
 
@@ -2474,6 +2507,7 @@ public sealed class MainViewModel : ViewModelBase
                 }
                 catch (Exception ex)
                 {
+                    AppLog.Error(ex, "Ошибка запуска Telegram-прокси");
                     SetFooterLog($"Ошибка запуска Telegram-прокси: {ex.Message}");
                     if (!silent)
                     {
@@ -2552,6 +2586,7 @@ public sealed class MainViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
+            AppLog.Error(ex, "Ошибка запуска обхода");
             await _bypassService.StopAsync(BypassEnableZapret, BypassEnableTelegram);
             UpdateBypassUi();
             SetFooterLog($"Ошибка запуска обхода: {ex.Message}");
@@ -2595,6 +2630,7 @@ public sealed class MainViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
+            AppLog.Error(ex, "Ошибка подбора стратегии zapret");
             if (!wasZapretRunning && _bypassService.IsZapretRunning)
             {
                 await _bypassService.StopAsync(stopZapret: true, stopTelegram: false);
@@ -2797,6 +2833,7 @@ public sealed class MainViewModel : ViewModelBase
                 }
                 catch (Exception ex)
                 {
+                    AppLog.Error(ex, "Ошибка запуска Telegram-прокси при восстановлении обхода");
                     SetFooterLog($"Ошибка запуска Telegram-прокси: {ex.Message}");
                     if (!silent)
                     {

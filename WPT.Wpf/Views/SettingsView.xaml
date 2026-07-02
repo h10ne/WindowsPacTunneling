@@ -66,9 +66,17 @@
 
                 <TextBlock Text="{Binding AppUpdateStatus}" Style="{StaticResource CaptionText}" TextWrapping="Wrap" Margin="0,0,0,8" />
 
-                <Button Content="Обновить" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left"
+                <StackPanel Orientation="Horizontal">
 
-                        Command="{Binding InstallAppUpdateCommand}" MinWidth="180" />
+                    <Button Content="Проверить наличие обновлений" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left"
+
+                            Command="{Binding CheckAppUpdateCommand}" MinWidth="220" />
+
+                    <Button Content="Обновить" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left"
+
+                            Command="{Binding InstallAppUpdateCommand}" MinWidth="180" Margin="12,0,0,0" />
+
+                </StackPanel>
 
 
                 <TextBlock Text="Zapret" Style="{StaticResource SectionTitle}" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,16,0,8" />

@@ -30,6 +30,7 @@ public sealed class BypassService : IAsyncDisposable
     {
         if (enableZapret)
         {
+            AppLog.Info("Запуск обхода zapret");
             AdminHelper.EnsureZapretAdminOrThrow();
             await ZapretInstaller.EnsureInstalledAsync(
                 progress == null ? null : new Progress<string>(m => progress.Report(BypassProgressReport.Status(m))),
@@ -72,6 +73,7 @@ public sealed class BypassService : IAsyncDisposable
         }
 
         progress?.Report(BypassProgressReport.Status("Запуск MTProto WS-прокси для Telegram..."));
+        AppLog.Info($"Запуск Telegram WS-прокси на порту {telegramPort}");
         await _telegram.StartAsync(telegramPort, telegramSecret, cancellationToken);
         progress?.Report(BypassProgressReport.Status("Telegram-прокси запущен"));
     }
@@ -91,6 +93,7 @@ public sealed class BypassService : IAsyncDisposable
 
     public async Task StopAsync(bool stopZapret, bool stopTelegram)
     {
+        AppLog.Info($"Остановка обхода (zapret={stopZapret}, telegram={stopTelegram})");
         if (stopZapret)
         {
             _zapret.Stop();
@@ -157,8 +160,9 @@ public sealed class BypassService : IAsyncDisposable
                     return strategy;
                 }
             }
-            catch
+            catch (Exception ex)
             {
+                AppLog.Warning(ex, $"Стратегия {strategy} не подошла");
             }
 
             _zapret.Stop();

@@ -94,10 +94,21 @@ public sealed class LocalProxyService : IDisposable
         var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
         process.ErrorDataReceived += (_, e) =>
         {
-            if (!string.IsNullOrWhiteSpace(e.Data))
+            if (string.IsNullOrWhiteSpace(e.Data))
             {
-                progress?.Report(e.Data);
+                return;
             }
+
+            if (e.Data.Contains("ERROR", StringComparison.OrdinalIgnoreCase))
+            {
+                AppLog.Warning($"sing-box: {e.Data}");
+            }
+            else
+            {
+                AppLog.Debug($"sing-box: {e.Data}");
+            }
+
+            progress?.Report(e.Data);
         };
 
         if (!process.Start())
@@ -117,6 +128,7 @@ public sealed class LocalProxyService : IDisposable
         WritePidFile(process.Id);
 
         progress?.Report("Ожидание локального прокси...");
+        AppLog.Info($"Запуск sing-box на порту {localPort}, конфиг: {configPath}");
         if (!await WaitForPortAsync(localPort, process, cancellationToken))
         {
             Stop();
@@ -132,6 +144,7 @@ public sealed class LocalProxyService : IDisposable
 
     public void Stop()
     {
+        AppLog.Info("Остановка локального прокси (sing-box)");
         KillManagedProcess();
         ClearPidFile();
     }

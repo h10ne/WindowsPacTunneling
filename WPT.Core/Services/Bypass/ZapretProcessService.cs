@@ -44,6 +44,7 @@ public sealed class ZapretProcessService
         }
 
         progress?.Report($"Запуск стратегии {strategyBatFileName}...");
+        AppLog.Info($"Запуск zapret: {strategyBatFileName}");
 
         var psi = new ProcessStartInfo
         {
@@ -72,6 +73,7 @@ public sealed class ZapretProcessService
 
     public void Stop()
     {
+        AppLog.Info("Остановка zapret (winws.exe)");
         foreach (var process in Process.GetProcessesByName("winws"))
         {
             try
