@@ -813,7 +813,8 @@ public sealed class MainViewModel : ViewModelBase
             }
             else
             {
-                TryAdoptBypassState();
+                await _bypassService.TryAdoptExistingAsync(_settings.SavedZapretStrategy);
+                UpdateBypassUi();
             }
 
             if (_settings.IsBypassActive && !StartBypassWithApp)
@@ -2091,9 +2092,10 @@ public sealed class MainViewModel : ViewModelBase
 
         SaveUiState();
         SetFooterLog("Перезапуск от имени администратора...");
-        if (!AdminHelper.TryRestartAsAdmin("--elevated"))
+        if (!App.TryRestartElevated())
         {
             System.Windows.Application.Current.Shutdown(0);
+            return;
         }
     }
 
@@ -2561,14 +2563,15 @@ public sealed class MainViewModel : ViewModelBase
         try
         {
             var progress = new Progress<BypassProgressReport>(HandleBypassProgress);
-            await _bypassService.StartAsync(
-                BypassEnableZapret,
-                BypassEnableTelegram,
-                _settings.SavedZapretStrategy,
-                tgPort,
-                _settings.TgWsProxySecret,
-                progress,
-                CancellationToken.None);
+            await Task.Run(async () =>
+                await _bypassService.StartAsync(
+                    BypassEnableZapret,
+                    BypassEnableTelegram,
+                    _settings.SavedZapretStrategy,
+                    tgPort,
+                    _settings.TgWsProxySecret,
+                    progress,
+                    CancellationToken.None).ConfigureAwait(false)).ConfigureAwait(true);
 
             if (BypassEnableZapret && !string.IsNullOrWhiteSpace(_bypassService.ActiveZapretStrategy))
             {
@@ -2615,7 +2618,9 @@ public sealed class MainViewModel : ViewModelBase
         {
             var progress = new Progress<BypassProgressReport>(HandleBypassProgress);
             var preferred = _bypassService.ActiveZapretStrategy ?? _settings.SavedZapretStrategy;
-            var strategy = await _bypassService.ProbeStrategyAsync(preferred, progress, CancellationToken.None);
+            var strategy = await Task.Run(async () =>
+                await _bypassService.ProbeStrategyAsync(preferred, progress, CancellationToken.None)
+                    .ConfigureAwait(false)).ConfigureAwait(true);
             _settings.SavedZapretStrategy = strategy;
 
             if (!wasZapretRunning)
@@ -2637,14 +2642,36 @@ public sealed class MainViewModel : ViewModelBase
             }
 
             UpdateBypassUi();
-            SetFooterLog($"Ошибка подбора стратегии: {ex.Message}");
-            MessageBox.Show(ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+            var message = FormatBypassProbeError(ex);
+            SetFooterLog($"Ошибка подбора стратегии: {message}");
+            MessageBox.Show(message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
         {
             SetBypassProbingState(false, 0, 0);
             IsBusy = false;
         }
+    }
+
+    private static string FormatBypassProbeError(Exception ex)
+    {
+        for (var current = ex; current != null; current = current.InnerException)
+        {
+            if (current is System.Net.Http.HttpRequestException
+                && current.Message.Contains("SSL connection", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Не удалось установить SSL-соединение с YouTube или Discord. "
+                    + "Проверка продолжится со следующей стратегией; если ошибка повторяется — отключите Secure DNS в браузере.";
+            }
+
+            if (current is System.Net.Sockets.SocketException { ErrorCode: 10061 })
+            {
+                return "Не удалось подключиться к локальному прокси (127.0.0.1:10808). "
+                    + "Отключите PAC или запустите локальный прокси перед подбором стратегии.";
+            }
+        }
+
+        return ex.InnerException?.Message ?? ex.Message;
     }
 
     private void HandleBypassProgress(BypassProgressReport report)
@@ -2795,7 +2822,8 @@ public sealed class MainViewModel : ViewModelBase
 
     private async Task RestoreBypassAsync(bool silent = false)
     {
-        TryAdoptBypassState();
+        await _bypassService.TryAdoptExistingAsync(_settings.SavedZapretStrategy);
+        UpdateBypassUi();
 
         if (_bypassService.IsZapretRunning && BypassEnableZapret)
         {

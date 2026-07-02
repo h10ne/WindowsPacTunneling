@@ -1,5 +1,7 @@
+using System.Windows;
 using WPT.Core.Services;
 using WPT.Wpf.Controls;
+using WPT.Wpf.Services;
 
 namespace WPT.Wpf;
 
@@ -14,6 +16,17 @@ public partial class App : System.Windows.Application
 
     protected override void OnStartup(System.Windows.StartupEventArgs e)
     {
+        if (!SingleInstanceGuard.TryAcquire())
+        {
+            System.Windows.MessageBox.Show(
+                "Приложение WPT уже запущено. Используйте окно или иконку в системном трее.",
+                "WPT",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            Shutdown(0);
+            return;
+        }
+
         AppLog.Initialize();
 
         if (!IsElevatedLaunch(e.Args))
@@ -21,7 +34,7 @@ public partial class App : System.Windows.Application
             var settings = SettingsService.Load();
             if (settings.RunAsAdministrator && !AdminHelper.IsRunningAsAdmin())
             {
-                if (!AdminHelper.TryRestartAsAdmin(ElevatedArg))
+                if (!TryRestartElevated())
                 {
                     Shutdown(0);
                     return;
@@ -40,6 +53,7 @@ public partial class App : System.Windows.Application
         }
 
         AppLog.Close();
+        SingleInstanceGuard.Release();
         base.OnExit(e);
     }
 
@@ -51,6 +65,23 @@ public partial class App : System.Windows.Application
         }
 
         base.OnSessionEnding(e);
+    }
+
+    internal static bool TryRestartElevated()
+    {
+        SingleInstanceGuard.Release();
+
+        if (!AdminHelper.TryRestartAsAdmin(ElevatedArg))
+        {
+            return false;
+        }
+
+        if (!SingleInstanceGuard.TryAcquire())
+        {
+            return false;
+        }
+
+        return true;
     }
 
     private static bool IsElevatedLaunch(string[] args) =>

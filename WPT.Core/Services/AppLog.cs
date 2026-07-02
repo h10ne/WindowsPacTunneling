@@ -44,6 +44,9 @@ public static class AppLog
 
     public static void Debug(string message) => Write(LogEventLevel.Debug, message);
 
+    public static void Debug(Exception exception, string message) =>
+        Write(LogEventLevel.Debug, message, exception);
+
     public static void Info(string message) => Write(LogEventLevel.Information, message);
 
     public static void Warning(string message) => Write(LogEventLevel.Warning, message);

@@ -202,6 +202,8 @@ public static class ZapretInstaller
                 process.Dispose();
             }
         }
+
+        ZapretLegacyServiceCleanup.TryRemoveInBackground();
     }
 
     public static bool HasRunningProcesses()

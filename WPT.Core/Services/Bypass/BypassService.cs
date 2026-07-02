@@ -19,6 +19,9 @@ public sealed class BypassService : IAsyncDisposable
 
     public void TryAdoptExisting(string? savedZapretStrategy) => _zapret.TryAdopt(savedZapretStrategy);
 
+    public Task<bool> TryAdoptExistingAsync(string? savedZapretStrategy, CancellationToken cancellationToken = default) =>
+        _zapret.TryAdoptAsync(savedZapretStrategy, cancellationToken);
+
     public async Task StartAsync(
         bool enableZapret,
         bool enableTelegram,
@@ -34,13 +37,13 @@ public sealed class BypassService : IAsyncDisposable
             AdminHelper.EnsureZapretAdminOrThrow();
             await ZapretInstaller.EnsureInstalledAsync(
                 progress == null ? null : new Progress<string>(m => progress.Report(BypassProgressReport.Status(m))),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
 
             var strategy = string.IsNullOrWhiteSpace(savedStrategy)
-                ? await ResolveWorkingStrategyAsync(null, progress, cancellationToken)
+                ? await ResolveWorkingStrategyAsync(null, progress, cancellationToken).ConfigureAwait(false)
                 : savedStrategy;
 
-            _zapret.TryAdopt(strategy);
+            await _zapret.TryAdoptAsync(strategy, cancellationToken).ConfigureAwait(false);
             if (_zapret.IsRunning)
             {
                 progress?.Report(BypassProgressReport.Status("Zapret уже запущен — подключено к существующему процессу"));
@@ -51,13 +54,13 @@ public sealed class BypassService : IAsyncDisposable
                 await _zapret.StartStrategyAsync(
                     strategy,
                     progress == null ? null : new Progress<string>(m => progress.Report(BypassProgressReport.Status(m))),
-                    cancellationToken);
+                    cancellationToken).ConfigureAwait(false);
             }
         }
 
         if (enableTelegram)
         {
-            await StartTelegramAsync(telegramPort, telegramSecret, progress, cancellationToken);
+            await StartTelegramAsync(telegramPort, telegramSecret, progress, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -96,7 +99,7 @@ public sealed class BypassService : IAsyncDisposable
         AppLog.Info($"Остановка обхода (zapret={stopZapret}, telegram={stopTelegram})");
         if (stopZapret)
         {
-            _zapret.Stop();
+            await _zapret.StopAsync().ConfigureAwait(false);
         }
 
         if (stopTelegram)
@@ -107,7 +110,7 @@ public sealed class BypassService : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        _zapret.Stop();
+        await _zapret.StopAsync().ConfigureAwait(false);
         await _telegram.DisposeAsync();
     }
 
@@ -124,14 +127,22 @@ public sealed class BypassService : IAsyncDisposable
 
         if (_zapret.IsRunning)
         {
-            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
-            if (await BypassConnectivityChecker.CheckYoutubeAndDiscordAsync(cancellationToken))
+            await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken).ConfigureAwait(false);
+
+            try
             {
-                return _zapret.ActiveStrategy ?? savedStrategy ?? strategies[0];
+                if (await BypassConnectivityChecker.CheckYoutubeAndDiscordAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    return _zapret.ActiveStrategy ?? savedStrategy ?? strategies[0];
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLog.Warning(ex, "Проверка текущей стратегии zapret не удалась");
             }
 
-            _zapret.Stop();
-            await Task.Delay(500, cancellationToken);
+            await _zapret.StopAsync().ConfigureAwait(false);
+            await Task.Delay(500, cancellationToken).ConfigureAwait(false);
         }
 
         var ordered = OrderStrategies(strategies, savedStrategy);
@@ -144,18 +155,18 @@ public sealed class BypassService : IAsyncDisposable
             progress?.Report(BypassProgressReport.Probe(i + 1, total));
             progress?.Report(BypassProgressReport.Status($"Проверка стратегии {strategy}..."));
 
-            _zapret.Stop();
-            await Task.Delay(500, cancellationToken);
+            await _zapret.StopAsync().ConfigureAwait(false);
+            await Task.Delay(500, cancellationToken).ConfigureAwait(false);
 
             try
             {
                 await _zapret.StartStrategyAsync(
                     strategy,
                     progress == null ? null : new Progress<string>(m => progress.Report(BypassProgressReport.Status(m))),
-                    cancellationToken);
-                await Task.Delay(TimeSpan.FromSeconds(3), cancellationToken);
+                    cancellationToken).ConfigureAwait(false);
+                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
 
-                if (await BypassConnectivityChecker.CheckYoutubeAndDiscordAsync(cancellationToken))
+                if (await BypassConnectivityChecker.CheckYoutubeAndDiscordAsync(cancellationToken).ConfigureAwait(false))
                 {
                     return strategy;
                 }
@@ -165,7 +176,7 @@ public sealed class BypassService : IAsyncDisposable
                 AppLog.Warning(ex, $"Стратегия {strategy} не подошла");
             }
 
-            _zapret.Stop();
+            await _zapret.StopAsync().ConfigureAwait(false);
         }
 
         throw new InvalidOperationException(
