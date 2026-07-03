@@ -106,8 +106,19 @@ public sealed class TrayService : IDisposable
     {
         _allowClose = true;
         _notifyIcon.Visible = false;
-        _viewModel.Shutdown();
-        Application.Current.Shutdown();
+
+        var app = Application.Current;
+        if (app == null)
+        {
+            return;
+        }
+
+        app.Dispatcher.BeginInvoke(() =>
+        {
+            _viewModel.Shutdown();
+            _window.Close();
+            app.Shutdown();
+        });
     }
 
     public void ShowMainWindow()

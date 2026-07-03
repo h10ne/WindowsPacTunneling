@@ -65,13 +65,7 @@
 
                     <Expander.Header>
 
-                        <StackPanel>
-
-                            <TextBlock Text="Расширенные настройки" FontWeight="SemiBold" />
-
-                            <TextBlock Text="Порт Telegram-прокси и выбранная стратегия zapret" Style="{StaticResource CaptionText}" Margin="0,2,0,0" />
-
-                        </StackPanel>
+                        <TextBlock Text="Расширенные настройки" FontWeight="SemiBold" />
 
                     </Expander.Header>
 
@@ -91,7 +85,13 @@
 
                         <TextBlock Text="Стратегия zapret" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
 
-                        <TextBlock Text="{Binding BypassStrategyDisplay}" TextWrapping="Wrap" Margin="0,0,0,4" />
+                        <ComboBox ItemsSource="{Binding AvailableZapretStrategies}"
+
+                                  SelectedItem="{Binding SelectedZapretStrategy}"
+
+                                  IsEnabled="{Binding IsBypassEditingEnabled}"
+
+                                  Margin="0,0,0,12" />
 
                     </StackPanel>
 

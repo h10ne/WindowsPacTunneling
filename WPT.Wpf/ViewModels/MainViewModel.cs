@@ -78,6 +78,7 @@ public sealed class MainViewModel : ViewModelBase
     private bool _bypassEnableTelegram = true;
     private string _bypassStatus = "Обход: остановлен";
     private string _bypassActiveStrategy = string.Empty;
+    private string? _selectedZapretStrategy;
     private string _telegramProxyLink = string.Empty;
     private string _tgWsProxyPort = "1443";
     private string _bypassInfoText = string.Empty;
@@ -86,6 +87,7 @@ public sealed class MainViewModel : ViewModelBase
     private int _bypassProbeCurrent;
     private int _bypassProbeTotal;
     private bool _bypassProbeFromStart;
+    private bool _isRefreshingZapretStrategies;
     private ServiceListDefinition? _selectedListToAdd;
 
     public MainViewModel()
@@ -93,6 +95,7 @@ public sealed class MainViewModel : ViewModelBase
         SelectedLists = [];
         CustomDomains = [];
         CustomIps = [];
+        AvailableZapretStrategies = [];
         ProcessModeApplications = [];
         ProcessModeConnectionTypes =
         [
@@ -522,12 +525,33 @@ public sealed class MainViewModel : ViewModelBase
     public string BypassActiveStrategy
     {
         get => _bypassActiveStrategy;
+        set => SetProperty(ref _bypassActiveStrategy, value);
+    }
+
+    public ObservableCollection<string> AvailableZapretStrategies { get; }
+
+    public string? SelectedZapretStrategy
+    {
+        get => _selectedZapretStrategy;
         set
         {
-            if (SetProperty(ref _bypassActiveStrategy, value))
+            var normalized = string.IsNullOrWhiteSpace(value) ? null : value;
+            if (string.Equals(_selectedZapretStrategy, normalized, StringComparison.OrdinalIgnoreCase))
             {
-                OnPropertyChanged(nameof(BypassStrategyDisplay));
+                return;
             }
+
+            _selectedZapretStrategy = normalized;
+            BypassActiveStrategy = normalized ?? string.Empty;
+            OnPropertyChanged();
+
+            if (_isRefreshingZapretStrategies)
+            {
+                return;
+            }
+
+            _settings.SavedZapretStrategy = normalized;
+            SaveBypassSettings(IsBypassRunning);
         }
     }
 
@@ -552,10 +576,6 @@ public sealed class MainViewModel : ViewModelBase
     public bool IsBypassInfoTextVisible => !string.IsNullOrWhiteSpace(BypassInfoText);
 
     public bool HasZapretStrategy => !string.IsNullOrWhiteSpace(_settings.SavedZapretStrategy);
-
-    public string BypassStrategyDisplay => HasZapretStrategy
-        ? _settings.SavedZapretStrategy!
-        : "не подобрана";
 
     public string TelegramProxyLink
     {
@@ -889,15 +909,46 @@ public sealed class MainViewModel : ViewModelBase
         }
     }
 
+    private bool _isShutdown;
+
     public void Shutdown()
     {
+        if (_isShutdown)
+        {
+            return;
+        }
+
+        _isShutdown = true;
+        StopTimers();
         StopServicesForUpdate();
 
         _domainListService.Dispose();
         _pacHttpServer.Dispose();
         _localProxyService.Dispose();
         _processModeService.Dispose();
-        _bypassService.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        WaitShutdownTask(_bypassService.DisposeAsync().AsTask(), TimeSpan.FromSeconds(15));
+    }
+
+    private void StopTimers()
+    {
+        _dailyUpdateTimer.Stop();
+        _proxyHealthTimer.Stop();
+        _processModeHealthTimer.Stop();
+    }
+
+    private static void WaitShutdownTask(Task task, TimeSpan timeout)
+    {
+        try
+        {
+            if (!task.Wait(timeout))
+            {
+                AppLog.Warning("Таймаут остановки фоновой задачи при выходе из приложения");
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLog.Debug(ex, "Ошибка остановки фоновой задачи при выходе из приложения");
+        }
     }
 
     private void StopServicesForUpdate()
@@ -974,7 +1025,8 @@ public sealed class MainViewModel : ViewModelBase
 
         BypassEnableZapret = _settings.BypassEnableZapret;
         BypassEnableTelegram = _settings.BypassEnableTelegram;
-        BypassActiveStrategy = _settings.SavedZapretStrategy ?? string.Empty;
+        RefreshAvailableZapretStrategies();
+        SyncSelectedZapretStrategyFromSettings();
         TgWsProxyPort = _settings.TgWsProxyPort.ToString();
         TelegramProxyLink = BuildTelegramProxyLinkPreview(_settings.TgWsProxyPort, _settings.TgWsProxySecret);
         TryAdoptBypassState();
@@ -2163,7 +2215,8 @@ public sealed class MainViewModel : ViewModelBase
             CanDownloadZapretUpdate = false;
             var version = ZapretInstaller.GetInstalledVersion();
             _settings.SavedZapretStrategy = null;
-            BypassActiveStrategy = string.Empty;
+            RefreshAvailableZapretStrategies();
+            SyncSelectedZapretStrategyFromSettings();
             SettingsService.Save(_settings);
             ZapretUpdateStatus = string.IsNullOrWhiteSpace(version)
                 ? "Zapret успешно установлен."
@@ -2725,9 +2778,51 @@ public sealed class MainViewModel : ViewModelBase
         }
     }
 
+    private void RefreshAvailableZapretStrategies()
+    {
+        _isRefreshingZapretStrategies = true;
+        try
+        {
+            AvailableZapretStrategies.Clear();
+            foreach (var strategy in ZapretInstaller.DiscoverStrategies())
+            {
+                AvailableZapretStrategies.Add(strategy);
+            }
+        }
+        finally
+        {
+            _isRefreshingZapretStrategies = false;
+        }
+    }
+
+    private void SyncSelectedZapretStrategyFromSettings()
+    {
+        var strategy = _bypassService.ActiveZapretStrategy ?? _settings.SavedZapretStrategy;
+        var normalized = string.IsNullOrWhiteSpace(strategy) ? null : strategy;
+
+        if (string.Equals(_selectedZapretStrategy, normalized, StringComparison.OrdinalIgnoreCase))
+        {
+            BypassActiveStrategy = strategy ?? string.Empty;
+            return;
+        }
+
+        _isRefreshingZapretStrategies = true;
+        try
+        {
+            _selectedZapretStrategy = normalized;
+            BypassActiveStrategy = strategy ?? string.Empty;
+            OnPropertyChanged(nameof(SelectedZapretStrategy));
+        }
+        finally
+        {
+            _isRefreshingZapretStrategies = false;
+        }
+    }
+
     private void UpdateBypassUi()
     {
-        BypassActiveStrategy = _bypassService.ActiveZapretStrategy ?? _settings.SavedZapretStrategy ?? string.Empty;
+        RefreshAvailableZapretStrategies();
+        SyncSelectedZapretStrategyFromSettings();
         TelegramProxyLink = _bypassService.IsTelegramRunning
             ? _bypassService.TelegramProxyLink
             : BuildTelegramProxyLinkPreview(_settings.TgWsProxyPort, _settings.TgWsProxySecret);
@@ -2786,7 +2881,6 @@ public sealed class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(CanToggleBypass));
         OnPropertyChanged(nameof(CanProbeBypassStrategy));
         OnPropertyChanged(nameof(BypassProbeLabel));
-        OnPropertyChanged(nameof(BypassStrategyDisplay));
         RelayCommand.RaiseAllCanExecuteChanged();
     }
 
@@ -2902,7 +2996,11 @@ public sealed class MainViewModel : ViewModelBase
             _settings.TgWsProxyPort = tgPort;
         }
 
-        if (!string.IsNullOrWhiteSpace(_bypassService.ActiveZapretStrategy))
+        if (!string.IsNullOrWhiteSpace(_selectedZapretStrategy))
+        {
+            _settings.SavedZapretStrategy = _selectedZapretStrategy;
+        }
+        else if (!string.IsNullOrWhiteSpace(_bypassService.ActiveZapretStrategy))
         {
             _settings.SavedZapretStrategy = _bypassService.ActiveZapretStrategy;
         }
