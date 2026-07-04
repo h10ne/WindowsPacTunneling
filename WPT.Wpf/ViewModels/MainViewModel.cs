@@ -22,6 +22,7 @@ public sealed class MainViewModel : ViewModelBase
     private readonly AppSettings _settings = SettingsService.Load();
     private readonly HashSet<string> _selectedListIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly DispatcherTimer _dailyUpdateTimer;
+    private readonly DispatcherTimer _updateCheckTimer;
     private readonly DispatcherTimer _proxyHealthTimer;
     private readonly DispatcherTimer _processModeHealthTimer;
     private CancellationTokenSource? _proxyHealthCts;
@@ -61,6 +62,7 @@ public sealed class MainViewModel : ViewModelBase
     private string _footerProcessModeStatus = "PM: остановлен";
     private string _proxyState = "Прокси остановлен";
     private int _selectedSection;
+    private int _settingsTabIndex;
     private bool _isBusy;
     private bool _startWithWindows;
     private bool _startProxyWithApp;
@@ -70,6 +72,8 @@ public sealed class MainViewModel : ViewModelBase
     private bool _startMinimizedToTray;
     private bool _zapretUpdateAvailable;
     private string _zapretUpdateStatus = "Нажмите «Проверить обновления», чтобы узнать актуальность zapret.";
+    private bool _singBoxUpdateAvailable;
+    private string _singBoxUpdateStatus = "Нажмите «Проверить обновления», чтобы узнать актуальность sing-box.";
     private bool _isAppUpdateAvailable;
     private string _appUpdateStatus = string.Empty;
     private string _latestAppVersionLabel = string.Empty;
@@ -147,8 +151,10 @@ public sealed class MainViewModel : ViewModelBase
         OpenDataFolderCommand = new RelayCommand(OpenDataFolder);
         RestartAsAdminCommand = new RelayCommand(RestartAsAdmin, () => IsRestartAsAdminEnabled && !IsBusy);
         CheckZapretUpdateCommand = new RelayCommand(async () => await CheckZapretUpdateAsync(), () => !IsBusy);
+        CheckSingBoxUpdateCommand = new RelayCommand(async () => await CheckSingBoxUpdateAsync(), () => !IsBusy);
         CheckAppUpdateCommand = new RelayCommand(async () => await CheckAppUpdateManualAsync(), () => !IsBusy);
         DownloadZapretUpdateCommand = new RelayCommand(async () => await DownloadZapretUpdateAsync(), () => !IsBusy && CanDownloadZapretUpdate);
+        DownloadSingBoxUpdateCommand = new RelayCommand(async () => await DownloadSingBoxUpdateAsync(), () => !IsBusy && CanDownloadSingBoxUpdate);
         InstallAppUpdateCommand = new RelayCommand(async () => await InstallAppUpdateAsync(), () => !IsBusy && IsAppUpdateAvailable);
         OpenSettingsForUpdateCommand = new RelayCommand(OpenSettingsForUpdate);
         AppUpdateStatus = $"Текущая версия: {AppVersionLabel}.";
@@ -168,6 +174,20 @@ public sealed class MainViewModel : ViewModelBase
             }
         };
         _dailyUpdateTimer.Start();
+
+        _updateCheckTimer = new DispatcherTimer { Interval = TimeSpan.FromHours(1) };
+        _updateCheckTimer.Tick += async (_, _) =>
+        {
+            try
+            {
+                await CheckAllUpdatesAsync(silent: true);
+            }
+            catch (Exception ex)
+            {
+                AppLog.Error(ex, "Ошибка фоновой проверки обновлений");
+            }
+        };
+        _updateCheckTimer.Start();
 
         _proxyHealthTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
         _proxyHealthTimer.Tick += async (_, _) => await RefreshProxyHealthAsync();
@@ -397,6 +417,12 @@ public sealed class MainViewModel : ViewModelBase
     {
         get => SelectedSection == 3;
         set { if (value) SelectedSection = 3; }
+    }
+
+    public int SettingsTabIndex
+    {
+        get => _settingsTabIndex;
+        set => SetProperty(ref _settingsTabIndex, value);
     }
 
     public string FooterLog
@@ -721,6 +747,26 @@ public sealed class MainViewModel : ViewModelBase
         {
             if (SetProperty(ref _zapretUpdateAvailable, value))
             {
+                OnPropertyChanged(nameof(IsAnyUpdateAvailable));
+                RelayCommand.RaiseAllCanExecuteChanged();
+            }
+        }
+    }
+
+    public string SingBoxUpdateStatus
+    {
+        get => _singBoxUpdateStatus;
+        private set => SetProperty(ref _singBoxUpdateStatus, value);
+    }
+
+    public bool CanDownloadSingBoxUpdate
+    {
+        get => _singBoxUpdateAvailable;
+        private set
+        {
+            if (SetProperty(ref _singBoxUpdateAvailable, value))
+            {
+                OnPropertyChanged(nameof(IsAnyUpdateAvailable));
                 RelayCommand.RaiseAllCanExecuteChanged();
             }
         }
@@ -741,10 +787,14 @@ public sealed class MainViewModel : ViewModelBase
         {
             if (SetProperty(ref _isAppUpdateAvailable, value))
             {
+                OnPropertyChanged(nameof(IsAnyUpdateAvailable));
                 RelayCommand.RaiseAllCanExecuteChanged();
             }
         }
     }
+
+    public bool IsAnyUpdateAvailable =>
+        IsAppUpdateAvailable || CanDownloadZapretUpdate || CanDownloadSingBoxUpdate;
 
     public bool RouteAllTrafficThroughProxy
     {
@@ -820,9 +870,13 @@ public sealed class MainViewModel : ViewModelBase
 
     public RelayCommand CheckZapretUpdateCommand { get; }
 
+    public RelayCommand CheckSingBoxUpdateCommand { get; }
+
     public RelayCommand CheckAppUpdateCommand { get; }
 
     public RelayCommand DownloadZapretUpdateCommand { get; }
+
+    public RelayCommand DownloadSingBoxUpdateCommand { get; }
 
     public RelayCommand InstallAppUpdateCommand { get; }
 
@@ -832,7 +886,7 @@ public sealed class MainViewModel : ViewModelBase
     {
         IsBusy = true;
         AppLog.Info($"Инициализация UI (admin={AdminHelper.IsRunningAsAdmin()})");
-        await CheckAppUpdateAsync(silent: true);
+        var updateCheckTask = CheckAllUpdatesAsync(silent: true);
         SetFooterLog("Инициализация приложения...");
 
         try
@@ -905,6 +959,15 @@ public sealed class MainViewModel : ViewModelBase
         }
         finally
         {
+            try
+            {
+                await updateCheckTask;
+            }
+            catch (Exception ex)
+            {
+                AppLog.Error(ex, "Ошибка проверки обновлений при запуске");
+            }
+
             IsBusy = false;
             RefreshPacState();
             if (FooterLog == "Инициализация приложения...")
@@ -1098,6 +1161,7 @@ public sealed class MainViewModel : ViewModelBase
         UpdateBypassInfoText();
         NotifyBypassCommandState();
         RefreshZapretUpdateStatusHint();
+        RefreshSingBoxUpdateStatusHint();
 
         ProcessModeLink = _settings.ProcessModeLink;
         ProcessModeConnectionType = _settings.ProcessModeConnectionType;
@@ -2286,6 +2350,15 @@ public sealed class MainViewModel : ViewModelBase
     private void OpenSettingsForUpdate()
     {
         SelectedSection = 3;
+        SettingsTabIndex = 1;
+    }
+
+    private async Task CheckAllUpdatesAsync(bool silent)
+    {
+        await Task.WhenAll(
+            CheckAppUpdateAsync(silent),
+            CheckZapretUpdateAsync(silent),
+            CheckSingBoxUpdateAsync(silent));
     }
 
     private async Task CheckAppUpdateManualAsync()
@@ -2403,28 +2476,42 @@ public sealed class MainViewModel : ViewModelBase
         }
     }
 
-    private async Task CheckZapretUpdateAsync()
+    private async Task CheckZapretUpdateAsync(bool silent = false)
     {
-        IsBusy = true;
-        SetFooterLog("Проверка обновлений zapret...");
+        if (!silent)
+        {
+            IsBusy = true;
+            SetFooterLog("Проверка обновлений zapret...");
+        }
 
         try
         {
             var result = await ZapretInstaller.CheckForUpdateAsync();
             ZapretUpdateStatus = result.Message;
             CanDownloadZapretUpdate = result.UpdateAvailable;
-            SetFooterLog(result.Message);
+
+            if (!silent)
+            {
+                SetFooterLog(result.Message);
+            }
         }
         catch (Exception ex)
         {
             AppLog.Error(ex, "Не удалось проверить обновления zapret");
             CanDownloadZapretUpdate = false;
             ZapretUpdateStatus = $"Не удалось проверить обновления: {ex.Message}";
-            SetFooterLog(ZapretUpdateStatus);
+
+            if (!silent)
+            {
+                SetFooterLog(ZapretUpdateStatus);
+            }
         }
         finally
         {
-            IsBusy = false;
+            if (!silent)
+            {
+                IsBusy = false;
+            }
         }
     }
 
@@ -2503,6 +2590,117 @@ public sealed class MainViewModel : ViewModelBase
             ? "Zapret установлен. Версия неизвестна — проверьте обновления."
             : $"Установлена версия {version}.";
         CanDownloadZapretUpdate = false;
+    }
+
+    private async Task CheckSingBoxUpdateAsync(bool silent = false)
+    {
+        if (!silent)
+        {
+            IsBusy = true;
+            SetFooterLog("Проверка обновлений sing-box...");
+        }
+
+        try
+        {
+            var result = await SingBoxInstaller.CheckForUpdateAsync();
+            SingBoxUpdateStatus = result.Message;
+            CanDownloadSingBoxUpdate = result.UpdateAvailable;
+
+            if (!silent)
+            {
+                SetFooterLog(result.Message);
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error(ex, "Не удалось проверить обновления sing-box");
+            CanDownloadSingBoxUpdate = false;
+            SingBoxUpdateStatus = $"Не удалось проверить обновления: {ex.Message}";
+
+            if (!silent)
+            {
+                SetFooterLog(SingBoxUpdateStatus);
+            }
+        }
+        finally
+        {
+            if (!silent)
+            {
+                IsBusy = false;
+            }
+        }
+    }
+
+    private async Task DownloadSingBoxUpdateAsync()
+    {
+        if (!CanDownloadSingBoxUpdate)
+        {
+            return;
+        }
+
+        IsBusy = true;
+
+        try
+        {
+            if (_localProxyService.IsRunning || SingBoxInstaller.HasRunningProcesses())
+            {
+                SetFooterLog("Остановка локального прокси...");
+                _localProxyService.Stop();
+                SaveProxySettings(isActive: false);
+                UpdateProxyUi();
+            }
+
+            if (_processModeService.IsRunning)
+            {
+                SetFooterLog("Остановка process mode...");
+                StopProcessMode();
+                SaveProcessModeSettings(isActive: false);
+                UpdateProcessModeUi();
+            }
+
+            SingBoxInstaller.StopRunningProcesses();
+            SetFooterLog("Скачивание обновления sing-box...");
+
+            var progress = new Progress<string>(message =>
+            {
+                SingBoxUpdateStatus = message;
+                SetFooterLog(message);
+            });
+            await SingBoxInstaller.InstallOrUpdateAsync(progress, CancellationToken.None);
+            CanDownloadSingBoxUpdate = false;
+            var version = SingBoxInstaller.GetInstalledVersion();
+            SingBoxUpdateStatus = string.IsNullOrWhiteSpace(version)
+                ? "Sing-box успешно установлен."
+                : $"Sing-box обновлён до версии {version}.";
+            SetFooterLog(SingBoxUpdateStatus);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error(ex, "Ошибка обновления sing-box");
+            var message = ex.InnerException?.Message ?? ex.Message;
+            SingBoxUpdateStatus = $"Ошибка обновления: {message}";
+            SetFooterLog(SingBoxUpdateStatus);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private void RefreshSingBoxUpdateStatusHint()
+    {
+        if (!SingBoxInstaller.IsInstalled())
+        {
+            SingBoxUpdateStatus = "Sing-box не установлен.";
+            CanDownloadSingBoxUpdate = false;
+            return;
+        }
+
+        var version = SingBoxInstaller.GetInstalledVersion();
+        SingBoxUpdateStatus = string.IsNullOrWhiteSpace(version)
+            ? "Sing-box установлен. Версия неизвестна — проверьте обновления."
+            : $"Установлена версия {version}.";
+        CanDownloadSingBoxUpdate = false;
     }
 
     private void SaveSettings(string? hash, bool isActive)

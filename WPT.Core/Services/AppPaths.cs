@@ -13,6 +13,8 @@ public static class AppPaths
 
     public static string BinDirectory => Path.Combine(Root, "bin");
 
+    public static string SingBoxVersionFile => Path.Combine(BinDirectory, "sing-box-version.txt");
+
     public static string SingBoxConfigFile => Path.Combine(Root, "sing-box.json");
 
     public static string SingBoxPidFile => Path.Combine(Root, "sing-box.pid");

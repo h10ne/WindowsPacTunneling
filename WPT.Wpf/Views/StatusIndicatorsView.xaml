@@ -112,7 +112,7 @@
 
         </StackPanel>
 
-        <TextBlock Text="Доступно обновление" VerticalAlignment="Center" Margin="0,6,0,0"
+        <TextBlock Text="Доступны обновления" VerticalAlignment="Center" Margin="0,6,0,0"
 
                    TextTrimming="CharacterEllipsis">
 
@@ -128,7 +128,7 @@
 
                     <Style.Triggers>
 
-                        <DataTrigger Binding="{Binding IsAppUpdateAvailable}" Value="True">
+                        <DataTrigger Binding="{Binding IsAnyUpdateAvailable}" Value="True">
 
                             <Setter Property="Visibility" Value="Visible" />
 
