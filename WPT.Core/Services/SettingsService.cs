@@ -90,6 +90,76 @@ public static partial class SettingsService
                 File.WriteAllText(AppPaths.ProcessModeAmneziaConfigFile, wireGuardConfig);
             }
         }
+
+        MigrateLegacyProxyConfigs(settings);
+    }
+
+    private static void MigrateLegacyProxyConfigs(AppSettings settings)
+    {
+        if (settings.SavedProxyConfigs.Count > 0)
+        {
+            return;
+        }
+
+        var links = new List<string>();
+        if (!string.IsNullOrWhiteSpace(settings.ProxyLink))
+        {
+            links.Add(settings.ProxyLink.Trim());
+        }
+
+        foreach (var link in settings.ProxyLinkHistory)
+        {
+            if (!string.IsNullOrWhiteSpace(link))
+            {
+                links.Add(link.Trim());
+            }
+        }
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var link in links)
+        {
+            if (!seen.Add(link))
+            {
+                continue;
+            }
+
+            if (!ProxyLinkParser.TryParse(link, out var profile, out _))
+            {
+                continue;
+            }
+
+            var config = new SavedProxyConfiguration
+            {
+                Name = BuildDefaultProxyConfigName(profile, settings.SavedProxyConfigs.Count + 1),
+                Link = link,
+                Protocol = profile.Protocol
+            };
+            settings.SavedProxyConfigs.Add(config);
+        }
+
+        if (settings.SavedProxyConfigs.Count == 0)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(settings.SelectedProxyConfigId))
+        {
+            var activeLink = settings.ProxyLink.Trim();
+            settings.SelectedProxyConfigId = settings.SavedProxyConfigs
+                .FirstOrDefault(x => x.Link.Equals(activeLink, StringComparison.OrdinalIgnoreCase))
+                ?.Id
+                ?? settings.SavedProxyConfigs[0].Id;
+        }
+    }
+
+    private static string BuildDefaultProxyConfigName(ProxyProfile profile, int index)
+    {
+        if (!string.IsNullOrWhiteSpace(profile.Remark))
+        {
+            return profile.Remark.Trim();
+        }
+
+        return $"{profile.Server}:{profile.ServerPort} ({index})";
     }
 
     private static List<string> ParseLegacyQuotedList(string input) =>

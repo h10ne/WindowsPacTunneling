@@ -10,6 +10,10 @@ public sealed class AppSettings
 
     public List<string> ProxyLinkHistory { get; set; } = [];
 
+    public List<SavedProxyConfiguration> SavedProxyConfigs { get; set; } = [];
+
+    public string? SelectedProxyConfigId { get; set; }
+
     public int LocalProxyPort { get; set; } = 10808;
 
     public bool IsLocalProxyActive { get; set; }

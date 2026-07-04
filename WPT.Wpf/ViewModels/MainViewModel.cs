@@ -39,6 +39,10 @@ public sealed class MainViewModel : ViewModelBase
     private string _proxyAddress = string.Empty;
     private string _pacPort = string.Empty;
     private string _proxyLink = string.Empty;
+    private string _proxyConfigName = string.Empty;
+    private string _proxyConfigSaveNotice = string.Empty;
+    private SavedProxyConfigItem? _selectedSavedProxyConfig;
+    private bool _isSyncingProxyConfig;
     private string _localPort = string.Empty;
     private string _processModeLink = string.Empty;
     private string _processModeAmneziaEndpoint = string.Empty;
@@ -112,12 +116,17 @@ public sealed class MainViewModel : ViewModelBase
         ];
         ProxyHistory = [];
         PacPortHistory = [];
+        SavedProxyConfigs = [];
         AvailableLists = [.. ServiceListDefinition.All];
 
         ApplyCommand = new RelayCommand(async () => await ApplyAsync(), () => !IsBusy);
         ShowPacCommand = new RelayCommand(async () => await ShowPacAsync(), () => !IsBusy);
         DisablePacCommand = new RelayCommand(DisablePac, () => !IsBusy && IsPacActive);
         ToggleProxyCommand = new RelayCommand(async () => await ToggleProxyAsync(), () => !IsBusy);
+        SaveProxyConfigCommand = new RelayCommand(SaveProxyConfig, () => IsProxyEditingEnabled);
+        DeleteSavedProxyConfigCommand = new RelayCommand(
+            DeleteSavedProxyConfig,
+            parameter => IsProxyEditingEnabled && parameter is SavedProxyConfigItem);
         ToggleBypassCommand = new RelayCommand(async () => await ToggleBypassAsync(), () => CanToggleBypass);
         ProbeBypassStrategyCommand = new RelayCommand(async () => await ProbeBypassStrategyAsync(), () => CanProbeBypassStrategy);
         AddListCommand = new RelayCommand(AddSelectedList);
@@ -183,6 +192,8 @@ public sealed class MainViewModel : ViewModelBase
 
     public ObservableCollection<string> PacPortHistory { get; }
 
+    public ObservableCollection<SavedProxyConfigItem> SavedProxyConfigs { get; }
+
     public IReadOnlyList<ServiceListDefinition> AvailableLists { get; }
 
     public string ProxyAddress
@@ -201,6 +212,52 @@ public sealed class MainViewModel : ViewModelBase
     {
         get => _proxyLink;
         set => SetProperty(ref _proxyLink, value);
+    }
+
+    public string ProxyConfigName
+    {
+        get => _proxyConfigName;
+        set => SetProperty(ref _proxyConfigName, value);
+    }
+
+    public string ProxyConfigSaveNotice
+    {
+        get => _proxyConfigSaveNotice;
+        private set
+        {
+            if (SetProperty(ref _proxyConfigSaveNotice, value))
+            {
+                OnPropertyChanged(nameof(HasProxyConfigSaveNotice));
+            }
+        }
+    }
+
+    public bool HasProxyConfigSaveNotice => !string.IsNullOrEmpty(_proxyConfigSaveNotice);
+
+    public void ClearProxyConfigSaveNotice() => ProxyConfigSaveNotice = string.Empty;
+
+    public SavedProxyConfigItem? SelectedSavedProxyConfig
+    {
+        get => _selectedSavedProxyConfig;
+        set
+        {
+            if (!SetProperty(ref _selectedSavedProxyConfig, value))
+            {
+                return;
+            }
+
+            if (!_isSyncingProxyConfig)
+            {
+                ClearProxyConfigSaveNotice();
+            }
+
+            if (_isSyncingProxyConfig || value == null)
+            {
+                return;
+            }
+
+            ApplySelectedProxyConfig(value);
+        }
     }
 
     public string LocalPort
@@ -719,6 +776,10 @@ public sealed class MainViewModel : ViewModelBase
 
     public RelayCommand ToggleProxyCommand { get; }
 
+    public RelayCommand SaveProxyConfigCommand { get; }
+
+    public RelayCommand DeleteSavedProxyConfigCommand { get; }
+
     public RelayCommand ToggleBypassCommand { get; }
 
     public RelayCommand ProbeBypassStrategyCommand { get; }
@@ -1016,7 +1077,11 @@ public sealed class MainViewModel : ViewModelBase
         NotifyOnMinimizeToTray = _settings.NotifyOnMinimizeToTray;
         UpdateListsOnStartup = _settings.UpdateListsOnStartup;
         RouteAllTrafficThroughProxy = _settings.RouteAllTrafficThroughProxy;
-        ProxyLink = _settings.ProxyLink;
+        LoadSavedProxyConfigs();
+        if (SelectedSavedProxyConfig == null)
+        {
+            ProxyLink = _settings.ProxyLink;
+        }
         LocalPort = _settings.LocalProxyPort.ToString();
         if (InputParser.TryParsePort(LocalPort, out var localPort, out _))
         {
@@ -1543,7 +1608,7 @@ public sealed class MainViewModel : ViewModelBase
             return;
         }
 
-        if (!ProxyLinkParser.TryParse(ProxyLink, out var profile, out var parseError))
+        if (!ProxyLinkParser.TryParse(ResolveProxyLinkForStart(), out var profile, out var parseError))
         {
             if (!silent)
             {
@@ -1645,6 +1710,193 @@ public sealed class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsProxyUnreachable));
         OnPropertyChanged(nameof(IsProxyEditingEnabled));
         OnPropertyChanged(nameof(ProxyToggleLabel));
+        RelayCommand.RaiseAllCanExecuteChanged();
+    }
+
+    private void LoadSavedProxyConfigs()
+    {
+        SavedProxyConfigs.Clear();
+
+        foreach (var config in _settings.SavedProxyConfigs)
+        {
+            SavedProxyConfigs.Add(SavedProxyConfigItem.FromModel(config));
+        }
+
+        var selected = SavedProxyConfigs.FirstOrDefault(x => x.Id == _settings.SelectedProxyConfigId)
+            ?? SavedProxyConfigs.FirstOrDefault();
+
+        _isSyncingProxyConfig = true;
+        if (selected == null)
+        {
+            SelectedSavedProxyConfig = null;
+            _isSyncingProxyConfig = false;
+            return;
+        }
+
+        SelectedSavedProxyConfig = selected;
+        _isSyncingProxyConfig = false;
+        ApplySelectedProxyConfig(selected, updateSelection: false);
+    }
+
+    private void ApplySelectedProxyConfig(SavedProxyConfigItem config, bool updateSelection = true)
+    {
+        _isSyncingProxyConfig = true;
+        ProxyConfigName = config.Name;
+        ProxyLink = config.Link;
+        _settings.SelectedProxyConfigId = config.Id;
+        _settings.ProxyLink = config.Link;
+
+        if (updateSelection && !ReferenceEquals(SelectedSavedProxyConfig, config))
+        {
+            SelectedSavedProxyConfig = config;
+        }
+
+        _isSyncingProxyConfig = false;
+    }
+
+    private void SaveProxyConfig()
+    {
+        var name = ProxyConfigName.Trim();
+        var link = ProxyLink.Trim();
+
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            MessageBox.Show("Укажите название конфигурации.", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (!ProxyLinkParser.TryParse(link, out var profile, out var parseError))
+        {
+            MessageBox.Show(parseError, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var existingByName = _settings.SavedProxyConfigs
+            .FirstOrDefault(x => x.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+
+        if (existingByName != null)
+        {
+            if (existingByName.Link.Equals(link, StringComparison.OrdinalIgnoreCase))
+            {
+                MessageBox.Show(
+                    "Конфигурация не изменилась.",
+                    "Ошибка",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            if (_settings.SavedProxyConfigs.Any(x => x.Id != existingByName.Id
+                && x.Link.Equals(link, StringComparison.OrdinalIgnoreCase)))
+            {
+                MessageBox.Show(
+                    "Такая строка подключения уже сохранена.",
+                    "Ошибка",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            existingByName.Link = link;
+            existingByName.Protocol = profile.Protocol;
+            _settings.SelectedProxyConfigId = existingByName.Id;
+            _settings.ProxyLink = link;
+            SettingsService.Save(_settings);
+            LoadSavedProxyConfigs();
+            ProxyConfigSaveNotice = $"Конфигурация «{name}» обновлена";
+            SetFooterLog($"Конфигурация «{name}» обновлена");
+            return;
+        }
+
+        if (_settings.SavedProxyConfigs.Any(x => x.Link.Equals(link, StringComparison.OrdinalIgnoreCase)))
+        {
+            MessageBox.Show(
+                "Такая строка подключения уже сохранена.",
+                "Ошибка",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        var config = new SavedProxyConfiguration
+        {
+            Name = name,
+            Link = link,
+            Protocol = profile.Protocol
+        };
+        _settings.SavedProxyConfigs.Add(config);
+
+        _settings.SelectedProxyConfigId = config.Id;
+        _settings.ProxyLink = link;
+        SettingsService.Save(_settings);
+        LoadSavedProxyConfigs();
+        _isSyncingProxyConfig = true;
+        ProxyConfigName = string.Empty;
+        ProxyLink = string.Empty;
+        _isSyncingProxyConfig = false;
+        SetFooterLog($"Конфигурация «{name}» сохранена");
+    }
+
+    private string ResolveProxyLinkForStart()
+    {
+        if (!string.IsNullOrWhiteSpace(SelectedSavedProxyConfig?.Link))
+        {
+            return SelectedSavedProxyConfig.Link;
+        }
+
+        return ProxyLink.Trim();
+    }
+
+    private void DeleteSavedProxyConfig(object? parameter)
+    {
+        if (parameter is not SavedProxyConfigItem item)
+        {
+            return;
+        }
+
+        var model = _settings.SavedProxyConfigs.FirstOrDefault(x => x.Id == item.Id);
+        if (model == null)
+        {
+            return;
+        }
+
+        _settings.SavedProxyConfigs.Remove(model);
+
+        if (_settings.SelectedProxyConfigId == item.Id)
+        {
+            var next = _settings.SavedProxyConfigs.FirstOrDefault();
+            _settings.SelectedProxyConfigId = next?.Id;
+            _settings.ProxyLink = next?.Link ?? string.Empty;
+        }
+
+        SettingsService.Save(_settings);
+        LoadSavedProxyConfigs();
+
+        if (SavedProxyConfigs.Count == 0)
+        {
+            _isSyncingProxyConfig = true;
+            ProxyConfigName = string.Empty;
+            ProxyLink = string.Empty;
+            _isSyncingProxyConfig = false;
+        }
+
+        SetFooterLog($"Конфигурация «{item.Name}» удалена");
+    }
+
+    private void PersistSelectedProxyConfig()
+    {
+        if (string.IsNullOrWhiteSpace(ProxyLink))
+        {
+            return;
+        }
+
+        var link = ProxyLink.Trim();
+        _settings.ProxyLink = link;
+
+        if (SelectedSavedProxyConfig != null)
+        {
+            _settings.SelectedProxyConfigId = SelectedSavedProxyConfig.Id;
+        }
     }
 
     private async Task RefreshProxyHealthAsync()
@@ -2280,9 +2532,7 @@ public sealed class MainViewModel : ViewModelBase
         if (!string.IsNullOrWhiteSpace(link))
         {
             _settings.ProxyLink = link;
-            _settings.ProxyLinkHistory.RemoveAll(x => x.Equals(link, StringComparison.OrdinalIgnoreCase));
-            _settings.ProxyLinkHistory.Insert(0, link);
-            _settings.ProxyLinkHistory = _settings.ProxyLinkHistory.Take(10).ToList();
+            PersistSelectedProxyConfig();
         }
 
         if (InputParser.TryParsePort(LocalPort, out var localPort, out _))
