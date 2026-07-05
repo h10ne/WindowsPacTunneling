@@ -76,7 +76,7 @@ public sealed class ProcessModeService : IDisposable
                     throw new ArgumentException("Не указана конфигурация Amnezia.", nameof(amneziaConfig));
                 }
 
-                await _awgProxyService.StartAsync(amneziaConfig, localPort, progress, cancellationToken);
+                await _awgProxyService.StartAsync(amneziaConfig, localPort, forPacProxy: false, progress, cancellationToken);
                 _activeConnectionType = ProcessModeConnectionType.Amnezia;
                 break;
 

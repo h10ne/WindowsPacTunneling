@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
@@ -37,11 +37,16 @@ public static class ProxyHealthChecker
                 UseProxy = true
             };
 
-            using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(12) };
+            using var client = new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan };
             using var response = await client.GetAsync(
                 ProbeUri,
-                HttpCompletionOption.ResponseHeadersRead,
+                HttpCompletionOption.ResponseContentRead,
                 cancellationToken);
+
+            if (response.Content.Headers.ContentLength is > 0)
+            {
+                await response.Content.CopyToAsync(Stream.Null, cancellationToken);
+            }
 
             stopwatch.Stop();
 

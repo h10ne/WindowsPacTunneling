@@ -160,6 +160,24 @@
 
 
 
+                    <TextBlock Text="Wireproxy (AmneziaWG)" Style="{StaticResource SectionTitle}" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,16,0,8" />
+
+                    <TextBlock Text="{Binding AmneziaBoxUpdateStatus}" Style="{StaticResource CaptionText}" TextWrapping="Wrap" Margin="0,0,0,8" />
+
+                    <StackPanel Orientation="Horizontal">
+
+                        <Button Content="Проверить обновления" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left"
+
+                                Command="{Binding CheckAmneziaBoxUpdateCommand}" MinWidth="180" />
+
+                        <Button Content="Скачать обновление" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left"
+
+                                Command="{Binding DownloadAmneziaBoxUpdateCommand}" MinWidth="180" Margin="12,0,0,0" />
+
+                    </StackPanel>
+
+
+
                 </StackPanel>
 
             </ScrollViewer>

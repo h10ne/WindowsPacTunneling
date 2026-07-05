@@ -17,6 +17,7 @@ public sealed class MainViewModel : ViewModelBase
     private readonly DomainListService _domainListService = new();
     private readonly PacHttpServer _pacHttpServer = new();
     private readonly LocalProxyService _localProxyService = new();
+    private readonly AwgProxyService _awgProxyService = new("proxy");
     private readonly ProcessModeService _processModeService = new();
     private readonly BypassService _bypassService = new();
     private readonly AppSettings _settings = SettingsService.Load();
@@ -25,7 +26,7 @@ public sealed class MainViewModel : ViewModelBase
     private readonly DispatcherTimer _updateCheckTimer;
     private readonly DispatcherTimer _proxyHealthTimer;
     private readonly DispatcherTimer _processModeHealthTimer;
-    private CancellationTokenSource? _proxyHealthCts;
+    private int _proxyHealthGeneration;
     private CancellationTokenSource? _processModeHealthCts;
     private bool _isProxyHealthy;
     private bool _isProxyUnreachable;
@@ -42,6 +43,11 @@ public sealed class MainViewModel : ViewModelBase
     private string _proxyLink = string.Empty;
     private string _proxyConfigName = string.Empty;
     private string _proxyConfigSaveNotice = string.Empty;
+    private string _vpnConfigName = string.Empty;
+    private string _vpnConfigEndpoint = string.Empty;
+    private string _vpnConfigSourceName = string.Empty;
+    private string _vpnConfigSaveNotice = string.Empty;
+    private string? _pendingVpnWireGuardConfig;
     private SavedProxyConfigItem? _selectedSavedProxyConfig;
     private bool _isSyncingProxyConfig;
     private string _localPort = string.Empty;
@@ -64,6 +70,9 @@ public sealed class MainViewModel : ViewModelBase
     private int _selectedSection;
     private int _settingsTabIndex;
     private bool _isBusy;
+    private bool _isProxyOperating;
+    private bool _isProxyStopping;
+    private bool _isLocalProxyRunning;
     private bool _startWithWindows;
     private bool _startProxyWithApp;
     private bool _startProcessModeWithApp;
@@ -74,6 +83,8 @@ public sealed class MainViewModel : ViewModelBase
     private string _zapretUpdateStatus = "Нажмите «Проверить обновления», чтобы узнать актуальность zapret.";
     private bool _singBoxUpdateAvailable;
     private string _singBoxUpdateStatus = "Нажмите «Проверить обновления», чтобы узнать актуальность sing-box.";
+    private bool _amneziaBoxUpdateAvailable;
+    private string _amneziaBoxUpdateStatus = "Нажмите «Проверить обновления», чтобы узнать актуальность wireproxy (AmneziaWG).";
     private bool _isAppUpdateAvailable;
     private string _appUpdateStatus = string.Empty;
     private string _latestAppVersionLabel = string.Empty;
@@ -125,9 +136,10 @@ public sealed class MainViewModel : ViewModelBase
 
         ApplyCommand = new RelayCommand(async () => await ApplyAsync(), () => !IsBusy);
         ShowPacCommand = new RelayCommand(async () => await ShowPacAsync(), () => !IsBusy);
-        DisablePacCommand = new RelayCommand(DisablePac, () => !IsBusy && IsPacActive);
-        ToggleProxyCommand = new RelayCommand(async () => await ToggleProxyAsync(), () => !IsBusy);
+        DisablePacCommand = new RelayCommand(async () => await DisablePacAsync(), () => !IsBusy && IsPacActive);
+        ToggleProxyCommand = new RelayCommand(async () => await ToggleProxyAsync(), () => !IsProxyOperating);
         SaveProxyConfigCommand = new RelayCommand(SaveProxyConfig, () => IsProxyEditingEnabled);
+        SaveVpnConfigCommand = new RelayCommand(SaveVpnConfig, () => IsProxyEditingEnabled);
         DeleteSavedProxyConfigCommand = new RelayCommand(
             DeleteSavedProxyConfig,
             parameter => IsProxyEditingEnabled && parameter is SavedProxyConfigItem);
@@ -152,9 +164,11 @@ public sealed class MainViewModel : ViewModelBase
         RestartAsAdminCommand = new RelayCommand(RestartAsAdmin, () => IsRestartAsAdminEnabled && !IsBusy);
         CheckZapretUpdateCommand = new RelayCommand(async () => await CheckZapretUpdateAsync(), () => !IsBusy);
         CheckSingBoxUpdateCommand = new RelayCommand(async () => await CheckSingBoxUpdateAsync(), () => !IsBusy);
+        CheckAmneziaBoxUpdateCommand = new RelayCommand(async () => await CheckAmneziaBoxUpdateAsync(), () => !IsBusy);
         CheckAppUpdateCommand = new RelayCommand(async () => await CheckAppUpdateManualAsync(), () => !IsBusy);
         DownloadZapretUpdateCommand = new RelayCommand(async () => await DownloadZapretUpdateAsync(), () => !IsBusy && CanDownloadZapretUpdate);
         DownloadSingBoxUpdateCommand = new RelayCommand(async () => await DownloadSingBoxUpdateAsync(), () => !IsBusy && CanDownloadSingBoxUpdate);
+        DownloadAmneziaBoxUpdateCommand = new RelayCommand(async () => await DownloadAmneziaBoxUpdateAsync(), () => !IsBusy && CanDownloadAmneziaBoxUpdate);
         InstallAppUpdateCommand = new RelayCommand(async () => await InstallAppUpdateAsync(), () => !IsBusy && IsAppUpdateAvailable);
         OpenSettingsForUpdateCommand = new RelayCommand(OpenSettingsForUpdate);
         AppUpdateStatus = $"Текущая версия: {AppVersionLabel}.";
@@ -176,17 +190,7 @@ public sealed class MainViewModel : ViewModelBase
         _dailyUpdateTimer.Start();
 
         _updateCheckTimer = new DispatcherTimer { Interval = TimeSpan.FromHours(1) };
-        _updateCheckTimer.Tick += async (_, _) =>
-        {
-            try
-            {
-                await CheckAllUpdatesAsync(silent: true);
-            }
-            catch (Exception ex)
-            {
-                AppLog.Error(ex, "Ошибка фоновой проверки обновлений");
-            }
-        };
+        _updateCheckTimer.Tick += (_, _) => StartBackgroundUpdateCheck();
         _updateCheckTimer.Start();
 
         _proxyHealthTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
@@ -254,7 +258,54 @@ public sealed class MainViewModel : ViewModelBase
 
     public bool HasProxyConfigSaveNotice => !string.IsNullOrEmpty(_proxyConfigSaveNotice);
 
-    public void ClearProxyConfigSaveNotice() => ProxyConfigSaveNotice = string.Empty;
+    public void ClearProxyConfigSaveNotice()
+    {
+        ProxyConfigSaveNotice = string.Empty;
+        VpnConfigSaveNotice = string.Empty;
+    }
+
+    public string VpnConfigName
+    {
+        get => _vpnConfigName;
+        set => SetProperty(ref _vpnConfigName, value);
+    }
+
+    public string VpnConfigEndpoint
+    {
+        get => _vpnConfigEndpoint;
+        private set
+        {
+            if (SetProperty(ref _vpnConfigEndpoint, value))
+            {
+                OnPropertyChanged(nameof(HasPendingVpnConfig));
+                OnPropertyChanged(nameof(IsVpnConfigDropHintVisible));
+            }
+        }
+    }
+
+    public string VpnConfigSourceName
+    {
+        get => _vpnConfigSourceName;
+        private set => SetProperty(ref _vpnConfigSourceName, value);
+    }
+
+    public string VpnConfigSaveNotice
+    {
+        get => _vpnConfigSaveNotice;
+        private set
+        {
+            if (SetProperty(ref _vpnConfigSaveNotice, value))
+            {
+                OnPropertyChanged(nameof(HasVpnConfigSaveNotice));
+            }
+        }
+    }
+
+    public bool HasVpnConfigSaveNotice => !string.IsNullOrEmpty(VpnConfigSaveNotice);
+
+    public bool HasPendingVpnConfig => !string.IsNullOrWhiteSpace(VpnConfigEndpoint);
+
+    public bool IsVpnConfigDropHintVisible => !HasPendingVpnConfig;
 
     public SavedProxyConfigItem? SelectedSavedProxyConfig
     {
@@ -467,6 +518,20 @@ public sealed class MainViewModel : ViewModelBase
         set => SetProperty(ref _proxyState, value);
     }
 
+    public bool IsProxyOperating
+    {
+        get => _isProxyOperating;
+        private set
+        {
+            if (SetProperty(ref _isProxyOperating, value))
+            {
+                OnPropertyChanged(nameof(ProxyToggleLabel));
+                OnPropertyChanged(nameof(IsProxyEditingEnabled));
+                RelayCommand.RaiseAllCanExecuteChanged();
+            }
+        }
+    }
+
     public bool IsBusy
     {
         get => _isBusy;
@@ -498,7 +563,8 @@ public sealed class MainViewModel : ViewModelBase
         }
     }
 
-    public bool IsProxyRunning => _localProxyService.IsRunning;
+    public bool IsProxyRunning =>
+        (IsProxyOperating && _isProxyStopping) || _isLocalProxyRunning;
 
     public bool IsProxyHealthy => _isProxyHealthy;
 
@@ -510,11 +576,22 @@ public sealed class MainViewModel : ViewModelBase
 
     public bool IsProcessModeRunning => _processModeService.IsRunning;
 
-    public bool IsProxyEditingEnabled => !IsProxyRunning && !IsBusy;
+    public bool IsProxyEditingEnabled => !IsProxyRunning && !IsBusy && !IsProxyOperating;
 
     public bool IsProcessModeEditingEnabled => !IsProcessModeRunning && !IsBusy;
 
-    public string ProxyToggleLabel => IsProxyRunning ? "Остановить" : "Запустить";
+    public string ProxyToggleLabel
+    {
+        get
+        {
+            if (IsProxyOperating)
+            {
+                return _isProxyStopping ? "Остановка..." : "Запуск...";
+            }
+
+            return IsProxyRunning ? "Остановить" : "Запустить";
+        }
+    }
 
     public bool IsBypassRunning => _bypassService.IsZapretRunning || _bypassService.IsTelegramRunning;
 
@@ -772,6 +849,29 @@ public sealed class MainViewModel : ViewModelBase
         }
     }
 
+    public string AmneziaBoxUpdateStatus
+    {
+        get => _amneziaBoxUpdateStatus;
+        private set => SetProperty(ref _amneziaBoxUpdateStatus, value);
+    }
+
+    public bool CanDownloadAmneziaBoxUpdate
+    {
+        get => _amneziaBoxUpdateAvailable;
+        private set
+        {
+            if (SetProperty(ref _amneziaBoxUpdateAvailable, value))
+            {
+                OnPropertyChanged(nameof(IsAnyUpdateAvailable));
+                RelayCommand.RaiseAllCanExecuteChanged();
+            }
+        }
+    }
+
+    public RelayCommand CheckAmneziaBoxUpdateCommand { get; }
+
+    public RelayCommand DownloadAmneziaBoxUpdateCommand { get; }
+
     public string AppVersionLabel => _appVersionLabel;
 
     public string AppUpdateStatus
@@ -794,7 +894,7 @@ public sealed class MainViewModel : ViewModelBase
     }
 
     public bool IsAnyUpdateAvailable =>
-        IsAppUpdateAvailable || CanDownloadZapretUpdate || CanDownloadSingBoxUpdate;
+        IsAppUpdateAvailable || CanDownloadZapretUpdate || CanDownloadSingBoxUpdate || CanDownloadAmneziaBoxUpdate;
 
     public bool RouteAllTrafficThroughProxy
     {
@@ -827,6 +927,8 @@ public sealed class MainViewModel : ViewModelBase
     public RelayCommand ToggleProxyCommand { get; }
 
     public RelayCommand SaveProxyConfigCommand { get; }
+
+    public RelayCommand SaveVpnConfigCommand { get; }
 
     public RelayCommand DeleteSavedProxyConfigCommand { get; }
 
@@ -882,106 +984,125 @@ public sealed class MainViewModel : ViewModelBase
 
     public RelayCommand OpenSettingsForUpdateCommand { get; }
 
-    public async Task InitializeAsync()
+    public Task InitializeAsync()
     {
-        IsBusy = true;
         AppLog.Info($"Инициализация UI (admin={AdminHelper.IsRunningAsAdmin()})");
-        var updateCheckTask = CheckAllUpdatesAsync(silent: true);
         SetFooterLog("Инициализация приложения...");
+        return Task.Run(InitializeCoreAsync);
+    }
 
+    private async Task InitializeCoreAsync()
+    {
         try
         {
-            if (UpdateListsOnStartup)
+            if (_settings.UpdateListsOnStartup)
             {
-                await UpdateListsAsync(showWarningOnError: true, reEnableUi: false);
+                await UpdateListsAsync(showWarningOnError: true, reEnableUi: false).ConfigureAwait(false);
             }
 
-            if (_settings.IsLocalProxyActive && !string.IsNullOrWhiteSpace(_settings.ProxyLink))
+            if (_settings.IsLocalProxyActive && CanRestoreLocalProxy())
             {
-                if (_localProxyService.IsRunning)
+                if (IsAnyLocalProxyRunning())
                 {
-                    UpdateProxyUi();
-                    _ = RefreshProxyHealthAsync();
+                    RunOnUiThread(() =>
+                    {
+                        UpdateProxyUi();
+                        _ = RefreshProxyHealthAsync();
+                    });
                 }
                 else
                 {
-                    await StartLocalProxyAsync(silent: true);
+                    await StartLocalProxyAsync(silent: true).ConfigureAwait(false);
                 }
             }
 
             if (AppBranding.IsProcessModeUiVisible
                 && _settings.IsProcessModeActive
-                && HasProcessModeConfig()
-                && ProcessModeApplications.Count > 0)
+                && HasProcessModeConfigFromSettings()
+                && _settings.ProcessModeApplications.Count > 0)
             {
                 if (_processModeService.IsRunning)
                 {
-                    UpdateProcessModeUi();
-                    _ = RefreshProcessModeHealthAsync();
+                    RunOnUiThread(() =>
+                    {
+                        UpdateProcessModeUi();
+                        _ = RefreshProcessModeHealthAsync();
+                    });
                 }
                 else
                 {
-                    await RestoreProcessModeAsync(silent: true);
+                    await RestoreProcessModeAsync(silent: true).ConfigureAwait(false);
                 }
             }
             else if (AppBranding.IsProcessModeUiVisible
-                && StartProcessModeWithApp
-                && HasProcessModeConfig()
-                && ProcessModeApplications.Count > 0)
+                && _settings.StartProcessModeWithApp
+                && HasProcessModeConfigFromSettings()
+                && _settings.ProcessModeApplications.Count > 0)
             {
-                await StartProcessModeAsync(silent: true);
+                await StartProcessModeAsync(silent: true).ConfigureAwait(false);
             }
 
-            if (StartProxyWithApp && _settings.IsProxyActive)
+            if (_settings.StartProxyWithApp && _settings.IsProxyActive)
             {
-                await ApplyAsync(silent: true);
+                await ApplyAsync(silent: true).ConfigureAwait(false);
             }
 
-            if (_settings.IsProxyActive && !StartProxyWithApp)
+            if (_settings.IsProxyActive && !_settings.StartProxyWithApp)
             {
                 SetFooterLog("PAC был активен. Нажмите «Применить» для повторной активации.");
             }
 
-            if (StartBypassWithApp && _settings.IsBypassActive)
+            if (_settings.StartBypassWithApp && _settings.IsBypassActive)
             {
-                await RestoreBypassAsync(silent: true);
+                await RestoreBypassAsync(silent: true).ConfigureAwait(false);
             }
             else
             {
-                await _bypassService.TryAdoptExistingAsync(_settings.SavedZapretStrategy);
-                UpdateBypassUi();
+                await _bypassService.TryAdoptExistingAsync(_settings.SavedZapretStrategy).ConfigureAwait(false);
+                RunOnUiThread(UpdateBypassUi);
             }
 
-            if (_settings.IsBypassActive && !StartBypassWithApp)
+            if (_settings.IsBypassActive && !_settings.StartBypassWithApp)
             {
                 SetFooterLog("Обход был активен. Нажмите «Запустить» для повторной активации.");
             }
         }
         finally
         {
+            RunOnUiThread(() =>
+            {
+                RefreshPacState();
+
+                if (FooterLog == "Инициализация приложения...")
+                {
+                    SetFooterLog("Готово");
+                }
+            });
+
+            StartBackgroundUpdateCheck();
+        }
+    }
+
+    private void StartBackgroundUpdateCheck()
+    {
+        _ = Task.Run(async () =>
+        {
             try
             {
-                await updateCheckTask;
+                await CheckAllUpdatesAsync(silent: true).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
                 AppLog.Error(ex, "Ошибка проверки обновлений при запуске");
             }
-
-            IsBusy = false;
-            RefreshPacState();
-            if (FooterLog == "Инициализация приложения...")
-            {
-                SetFooterLog("Готово");
-            }
-        }
+        });
     }
 
     public void SaveUiState()
     {
         UpdateTunnelingPreferences();
         UpdateProcessModePreferences();
-        SaveProxySettings(_localProxyService.IsRunning);
+        SaveProxySettings(IsAnyLocalProxyRunning());
         SaveProcessModeSettings(_processModeService.IsRunning);
         SaveBypassSettings(IsBypassRunning);
     }
@@ -996,6 +1117,7 @@ public sealed class MainViewModel : ViewModelBase
         try
         {
             _localProxyService.Stop();
+            _awgProxyService.Stop();
             SaveProxySettings(isActive: false);
             ResetProxyHealth();
             UpdateProxyUi();
@@ -1049,6 +1171,7 @@ public sealed class MainViewModel : ViewModelBase
         _domainListService.Dispose();
         _pacHttpServer.Dispose();
         _localProxyService.Dispose();
+        _awgProxyService.Dispose();
         _processModeService.Dispose();
         WaitShutdownTask(_bypassService.DisposeAsync().AsTask(), TimeSpan.FromSeconds(15));
     }
@@ -1149,6 +1272,7 @@ public sealed class MainViewModel : ViewModelBase
         if (InputParser.TryParsePort(LocalPort, out var localPort, out _))
         {
             _localProxyService.Prepare(localPort);
+            _awgProxyService.Prepare(localPort);
         }
 
         BypassEnableZapret = _settings.BypassEnableZapret;
@@ -1162,6 +1286,7 @@ public sealed class MainViewModel : ViewModelBase
         NotifyBypassCommandState();
         RefreshZapretUpdateStatusHint();
         RefreshSingBoxUpdateStatusHint();
+        RefreshAmneziaBoxUpdateStatusHint();
 
         ProcessModeLink = _settings.ProcessModeLink;
         ProcessModeConnectionType = _settings.ProcessModeConnectionType;
@@ -1177,8 +1302,9 @@ public sealed class MainViewModel : ViewModelBase
             ProcessModeApplications.Add(app);
         }
 
+        _isLocalProxyRunning = _localProxyService.IsRunning || _awgProxyService.IsRunning;
         UpdateProxyUi();
-        if (_localProxyService.IsRunning)
+        if (IsAnyLocalProxyRunning())
         {
             _ = RefreshProxyHealthAsync();
         }
@@ -1394,26 +1520,32 @@ public sealed class MainViewModel : ViewModelBase
             return;
         }
 
-        if (ProcessModeApplications.Count == 0)
+        var applications = silent ? _settings.ProcessModeApplications : ProcessModeApplications.ToList();
+        if (applications.Count == 0)
         {
             return;
         }
 
-        if (!TryValidateProcessModeConnection(out var parseError))
+        if (!(silent
+                ? TryValidateProcessModeConnectionFromSettings(out var parseError)
+                : TryValidateProcessModeConnection(out parseError)))
         {
             if (!silent)
             {
-                MessageBox.Show(parseError, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
+                RunOnUiThread(() =>
+                    MessageBox.Show(parseError, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning));
             }
 
             return;
         }
 
-        if (!InputParser.TryParsePort(ProcessModePort, out var localPort, out var portError))
+        var portText = silent ? _settings.ProcessModePort.ToString() : ProcessModePort;
+        if (!InputParser.TryParsePort(portText, out var localPort, out var portError))
         {
             if (!silent)
             {
-                MessageBox.Show(portError, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
+                RunOnUiThread(() =>
+                    MessageBox.Show(portError, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning));
             }
 
             return;
@@ -1424,43 +1556,54 @@ public sealed class MainViewModel : ViewModelBase
             return;
         }
 
-        IsBusy = true;
+        if (!silent)
+        {
+            RunOnUiThread(() => IsBusy = true);
+        }
+
         SetFooterLog("Восстановление Process Mode...");
 
         try
         {
-            var progress = new Progress<string>(message =>
+            var progress = new Progress<string>(message => RunOnUiThread(() =>
             {
                 ProcessModeStatus = message;
                 SetFooterLog(message);
-            });
+            }));
             await _processModeService.TryRestoreAsync(
-                ProcessModeConnectionType,
-                TryGetProcessModeShadowsocksProfile(),
-                TryGetProcessModeAmneziaConfig(),
+                silent ? _settings.ProcessModeConnectionType : ProcessModeConnectionType,
+                TryGetProcessModeShadowsocksProfile(silent),
+                TryGetProcessModeAmneziaConfig(silent),
                 localPort,
-                ProcessModeApplications.ToList(),
+                applications,
                 progress,
-                CancellationToken.None);
+                CancellationToken.None).ConfigureAwait(false);
 
-            SaveProcessModeSettings(isActive: true);
-            UpdateProcessModeUi();
-            _ = RefreshProcessModeHealthAsync(showCheckingState: false);
+            RunOnUiThread(() =>
+            {
+                SaveProcessModeSettings(isActive: true);
+                UpdateProcessModeUi();
+                _ = RefreshProcessModeHealthAsync(showCheckingState: false);
+            });
             SetFooterLog($"Process Mode восстановлен: {_processModeService.LocalProxyAddress}");
         }
         catch (Exception ex)
         {
             AppLog.Error(ex, "Ошибка восстановления Process Mode");
-            UpdateProcessModeUi();
+            RunOnUiThread(UpdateProcessModeUi);
             SetFooterLog($"Ошибка восстановления Process Mode: {ex.Message}");
             if (!silent)
             {
-                MessageBox.Show(ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                RunOnUiThread(() =>
+                    MessageBox.Show(ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error));
             }
         }
         finally
         {
-            IsBusy = false;
+            if (!silent)
+            {
+                RunOnUiThread(() => IsBusy = false);
+            }
         }
     }
 
@@ -1471,35 +1614,42 @@ public sealed class MainViewModel : ViewModelBase
             return;
         }
 
-        if (ProcessModeApplications.Count == 0)
+        var applications = silent ? _settings.ProcessModeApplications : ProcessModeApplications.ToList();
+        if (applications.Count == 0)
         {
             if (!silent)
             {
-                MessageBox.Show(
-                    "Добавьте хотя бы одно приложение в список.",
-                    "Ошибка",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Warning);
+                RunOnUiThread(() =>
+                    MessageBox.Show(
+                        "Добавьте хотя бы одно приложение в список.",
+                        "Ошибка",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning));
             }
 
             return;
         }
 
-        if (!TryValidateProcessModeConnection(out var parseError))
+        if (!(silent
+                ? TryValidateProcessModeConnectionFromSettings(out var parseError)
+                : TryValidateProcessModeConnection(out parseError)))
         {
             if (!silent)
             {
-                MessageBox.Show(parseError, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
+                RunOnUiThread(() =>
+                    MessageBox.Show(parseError, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning));
             }
 
             return;
         }
 
-        if (!InputParser.TryParsePort(ProcessModePort, out var localPort, out var portError))
+        var portText = silent ? _settings.ProcessModePort.ToString() : ProcessModePort;
+        if (!InputParser.TryParsePort(portText, out var localPort, out var portError))
         {
             if (!silent)
             {
-                MessageBox.Show(portError, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
+                RunOnUiThread(() =>
+                    MessageBox.Show(portError, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning));
             }
 
             return;
@@ -1510,43 +1660,54 @@ public sealed class MainViewModel : ViewModelBase
             return;
         }
 
-        IsBusy = true;
+        if (!silent)
+        {
+            RunOnUiThread(() => IsBusy = true);
+        }
+
         SetFooterLog("Запуск Process Mode...");
 
         try
         {
-            var progress = new Progress<string>(message =>
+            var progress = new Progress<string>(message => RunOnUiThread(() =>
             {
                 ProcessModeStatus = message;
                 SetFooterLog(message);
-            });
+            }));
             await _processModeService.StartAsync(
-                ProcessModeConnectionType,
-                TryGetProcessModeShadowsocksProfile(),
-                TryGetProcessModeAmneziaConfig(),
+                silent ? _settings.ProcessModeConnectionType : ProcessModeConnectionType,
+                TryGetProcessModeShadowsocksProfile(silent),
+                TryGetProcessModeAmneziaConfig(silent),
                 localPort,
-                ProcessModeApplications.ToList(),
+                applications,
                 progress,
-                CancellationToken.None);
+                CancellationToken.None).ConfigureAwait(false);
 
-            SaveProcessModeSettings(isActive: true);
-            UpdateProcessModeUi();
-            _ = RefreshProcessModeHealthAsync(showCheckingState: true);
+            RunOnUiThread(() =>
+            {
+                SaveProcessModeSettings(isActive: true);
+                UpdateProcessModeUi();
+                _ = RefreshProcessModeHealthAsync(showCheckingState: true);
+            });
             SetFooterLog($"Process Mode запущен: {_processModeService.LocalProxyAddress}");
         }
         catch (Exception ex)
         {
             AppLog.Error(ex, "Ошибка запуска Process Mode");
-            UpdateProcessModeUi();
+            RunOnUiThread(UpdateProcessModeUi);
             SetFooterLog($"Ошибка запуска Process Mode: {ex.Message}");
             if (!silent)
             {
-                MessageBox.Show(ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                RunOnUiThread(() =>
+                    MessageBox.Show(ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error));
             }
         }
         finally
         {
-            IsBusy = false;
+            if (!silent)
+            {
+                RunOnUiThread(() => IsBusy = false);
+            }
         }
     }
 
@@ -1569,7 +1730,7 @@ public sealed class MainViewModel : ViewModelBase
         var message = ProcessModePacConflict.BuildWarningMessage(
             ProxyAddress,
             processModePort,
-            _localProxyService.IsRunning);
+            IsAnyLocalProxyRunning());
 
         if (silent)
         {
@@ -1586,7 +1747,7 @@ public sealed class MainViewModel : ViewModelBase
 
         if (result == MessageBoxResult.Yes)
         {
-            DisablePac();
+            _ = DisablePacAsync();
             return true;
         }
 
@@ -1651,86 +1812,198 @@ public sealed class MainViewModel : ViewModelBase
 
     private async Task ToggleProxyAsync()
     {
-        if (_localProxyService.IsRunning)
-        {
-            StopLocalProxy();
-            return;
-        }
-
-        if (InputParser.TryParsePort(LocalPort, out var localPort, out _))
-        {
-            _localProxyService.Prepare(localPort);
-        }
-
-        await StartLocalProxyAsync();
-    }
-
-    private async Task StartLocalProxyAsync(bool silent = false)
-    {
-        if (_localProxyService.IsRunning)
+        if (IsProxyOperating)
         {
             return;
         }
 
-        if (!ProxyLinkParser.TryParse(ResolveProxyLinkForStart(), out var profile, out var parseError))
-        {
-            if (!silent)
-            {
-                MessageBox.Show(parseError, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
-            }
-
-            return;
-        }
-
-        if (!InputParser.TryParsePort(LocalPort, out var localPort, out var portError))
-        {
-            if (!silent)
-            {
-                MessageBox.Show(portError, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
-            }
-
-            return;
-        }
-
-        IsBusy = true;
-        SetFooterLog("Запуск локального прокси...");
+        var stopping = _isLocalProxyRunning;
+        _isProxyStopping = stopping;
+        IsProxyOperating = true;
+        OnPropertyChanged(nameof(ProxyToggleLabel));
+        OnPropertyChanged(nameof(IsProxyRunning));
+        SetFooterLog(stopping ? "Остановка прокси..." : "Запуск прокси");
+        await Task.Yield();
 
         try
         {
-            var progress = new Progress<string>(message =>
+            if (stopping)
             {
-                ProxyState = message;
-                SetFooterLog(message);
-            });
-            await _localProxyService.StartAsync(profile, localPort, progress, CancellationToken.None);
+                await Task.Run(() =>
+                {
+                    _localProxyService.Stop();
+                    _awgProxyService.Stop();
+                }).ConfigureAwait(false);
 
-            SaveProxySettings(isActive: true);
-            UpdateProxyUi();
-            UpdateFooter();
-            _ = RefreshProxyHealthAsync();
+                await RunOnUiThreadAsync(() =>
+                {
+                    _isLocalProxyRunning = false;
+                    SaveProxySettings(isActive: false);
+                    ResetProxyHealth();
+                    UpdateFooter();
+                }).ConfigureAwait(false);
 
-            SetFooterLog($"Локальный прокси запущен: {_localProxyService.LocalProxyAddress}");
-        }
-        catch (Exception ex)
-        {
-            AppLog.Error(ex, "Ошибка запуска локального прокси");
-            ResetProxyHealth();
-            UpdateProxyUi();
-            SetFooterLog($"Ошибка запуска прокси: {ex.Message}");
-            if (!silent)
+                SetFooterLog("Локальный прокси остановлен");
+            }
+            else
             {
-                MessageBox.Show(ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                await StartLocalProxyAsync(silent: false, manageUiState: false).ConfigureAwait(false);
             }
         }
         finally
         {
-            IsBusy = false;
+            await RunOnUiThreadAsync(() =>
+            {
+                _isProxyStopping = false;
+                IsProxyOperating = false;
+                UpdateProxyUi();
+            }).ConfigureAwait(false);
+        }
+    }
+
+    private async Task StartLocalProxyAsync(bool silent = false, bool manageUiState = true)
+    {
+        if (_isLocalProxyRunning || IsAnyLocalProxyRunning())
+        {
+            if (!silent)
+            {
+                _isLocalProxyRunning = true;
+            }
+
+            return;
+        }
+
+        var localPortText = silent ? _settings.LocalProxyPort.ToString() : LocalPort;
+        if (!InputParser.TryParsePort(localPortText, out var localPort, out var portError))
+        {
+            if (!silent)
+            {
+                RunOnUiThread(() =>
+                    MessageBox.Show(portError, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning));
+            }
+
+            return;
+        }
+
+        if (!silent && manageUiState)
+        {
+            RunOnUiThread(() => IsBusy = true);
+        }
+
+        if (manageUiState || silent)
+        {
+            SetFooterLog(silent ? "Запуск локального прокси..." : "Запуск прокси");
+        }
+
+        if (!silent)
+        {
+            await Task.Yield();
+        }
+
+        string? wireGuardConfig = null;
+        ProxyProfile? profile = null;
+        var isVpn = silent ? IsSelectedConfigVpnFromSettings() : IsSelectedConfigVpn();
+
+        if (isVpn)
+        {
+            if (!TryResolveVpnWireGuardConfig(silent, out var resolvedVpnConfig, out var vpnError))
+            {
+                if (!silent)
+                {
+                    RunOnUiThread(() =>
+                        MessageBox.Show(vpnError, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning));
+                }
+
+                return;
+            }
+
+            wireGuardConfig = resolvedVpnConfig;
+        }
+        else
+        {
+            var link = silent ? ResolveProxyLinkForStartFromSettings() : ResolveProxyLinkForStart();
+            if (!ProxyLinkParser.TryParse(link, out var resolvedProfile, out var parseError))
+            {
+                if (!silent)
+                {
+                    RunOnUiThread(() =>
+                        MessageBox.Show(parseError, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning));
+                }
+
+                return;
+            }
+
+            profile = resolvedProfile;
+        }
+
+        try
+        {
+            await Task.Run(async () =>
+            {
+                _localProxyService.Prepare(localPort);
+                _awgProxyService.Prepare(localPort);
+
+                var progress = new Progress<string>(message => RunOnUiThread(() =>
+                {
+                    ProxyState = message;
+                    SetFooterLog(message);
+                }));
+
+                if (wireGuardConfig != null)
+                {
+                    _localProxyService.Stop();
+                    await _awgProxyService.StartAsync(wireGuardConfig, localPort, forPacProxy: true, progress, CancellationToken.None)
+                        .ConfigureAwait(false);
+                }
+                else if (profile != null)
+                {
+                    _awgProxyService.Stop();
+                    await _localProxyService.StartAsync(profile, localPort, progress, CancellationToken.None)
+                        .ConfigureAwait(false);
+                }
+
+                RunOnUiThread(() =>
+                {
+                    _isLocalProxyRunning = true;
+                    SaveProxySettings(isActive: true);
+                    UpdateProxyUi();
+                    UpdateFooter();
+                    _ = RefreshProxyHealthAsync();
+                });
+
+                SetFooterLog($"Локальный прокси запущен: {GetLocalProxyAddress()}");
+            }).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error(ex, "Ошибка запуска локального прокси");
+            RunOnUiThread(() =>
+            {
+                _isLocalProxyRunning = false;
+                ResetProxyHealth();
+                UpdateProxyUi();
+            });
+            SetFooterLog($"Ошибка запуска прокси: {ex.Message}");
+            if (!silent)
+            {
+                RunOnUiThread(() =>
+                    MessageBox.Show(ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error));
+            }
+        }
+        finally
+        {
+            if (!silent && manageUiState)
+            {
+                RunOnUiThread(() => IsBusy = false);
+            }
         }
     }
 
     private void StopLocalProxy()
     {
         _localProxyService.Stop();
+        _awgProxyService.Stop();
+        _isLocalProxyRunning = false;
         SaveProxySettings(isActive: false);
         ResetProxyHealth();
         UpdateProxyUi();
@@ -1740,8 +2013,26 @@ public sealed class MainViewModel : ViewModelBase
 
     private void UpdateProxyUi()
     {
-        var isRunning = _localProxyService.IsRunning;
-        var address = _localProxyService.LocalProxyAddress;
+        if (IsProxyOperating && _isProxyStopping)
+        {
+            FooterProxyStatus = "Прокси: остановка...";
+            ProxyState = "Остановка...";
+            OnPropertyChanged(nameof(IsProxyRunning));
+            OnPropertyChanged(nameof(IsProxyHealthy));
+            OnPropertyChanged(nameof(IsProxyUnreachable));
+            OnPropertyChanged(nameof(IsProxyEditingEnabled));
+            OnPropertyChanged(nameof(ProxyToggleLabel));
+            RelayCommand.RaiseAllCanExecuteChanged();
+            return;
+        }
+
+        if (!IsProxyOperating)
+        {
+            _isLocalProxyRunning = _localProxyService.IsRunning || _awgProxyService.IsRunning;
+        }
+
+        var isRunning = _isLocalProxyRunning;
+        var address = GetLocalProxyAddress();
 
         if (!isRunning)
         {
@@ -1805,10 +2096,24 @@ public sealed class MainViewModel : ViewModelBase
     private void ApplySelectedProxyConfig(SavedProxyConfigItem config, bool updateSelection = true)
     {
         _isSyncingProxyConfig = true;
-        ProxyConfigName = config.Name;
-        ProxyLink = config.Link;
         _settings.SelectedProxyConfigId = config.Id;
-        _settings.ProxyLink = config.Link;
+
+        if (VpnConfigStorage.IsVpnProtocol(config.Protocol))
+        {
+            ProxyConfigName = string.Empty;
+            ProxyLink = string.Empty;
+            VpnConfigName = config.Name;
+            RefreshVpnConfigDisplay(config.Id);
+            _pendingVpnWireGuardConfig = null;
+        }
+        else
+        {
+            VpnConfigName = string.Empty;
+            ClearPendingVpnConfigDisplay();
+            ProxyConfigName = config.Name;
+            ProxyLink = config.Link;
+            _settings.ProxyLink = config.Link;
+        }
 
         if (updateSelection && !ReferenceEquals(SelectedSavedProxyConfig, config))
         {
@@ -1901,6 +2206,21 @@ public sealed class MainViewModel : ViewModelBase
         SetFooterLog($"Конфигурация «{name}» сохранена");
     }
 
+    private string ResolveProxyLinkForStartFromSettings()
+    {
+        var selected = _settings.SavedProxyConfigs
+            .FirstOrDefault(x => x.Id == _settings.SelectedProxyConfigId);
+
+        if (selected != null
+            && !VpnConfigStorage.IsVpnProtocol(selected.Protocol)
+            && !string.IsNullOrWhiteSpace(selected.Link))
+        {
+            return selected.Link;
+        }
+
+        return _settings.ProxyLink.Trim();
+    }
+
     private string ResolveProxyLinkForStart()
     {
         if (!string.IsNullOrWhiteSpace(SelectedSavedProxyConfig?.Link))
@@ -1909,6 +2229,263 @@ public sealed class MainViewModel : ViewModelBase
         }
 
         return ProxyLink.Trim();
+    }
+
+    public bool TryImportVpnConfigFile(string path, bool showErrors = true)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return false;
+        }
+
+        if (!path.EndsWith(".conf", StringComparison.OrdinalIgnoreCase))
+        {
+            if (showErrors)
+            {
+                MessageBox.Show(
+                    "Поддерживаются только файлы .conf",
+                    "Ошибка",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
+
+            return false;
+        }
+
+        if (!VpnConfigStorage.TryImportFromFile(path, out var wireGuardConfig, out var summary, out var error))
+        {
+            if (showErrors)
+            {
+                MessageBox.Show(error, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+
+            return false;
+        }
+
+        _pendingVpnWireGuardConfig = wireGuardConfig;
+        VpnConfigEndpoint = summary.Endpoint;
+        VpnConfigSourceName = summary.SourceFileName;
+        VpnConfigSaveNotice = string.Empty;
+        SetFooterLog($"Конфиг Amnezia загружен: {summary.Endpoint}");
+        return true;
+    }
+
+    private void SaveVpnConfig()
+    {
+        var name = VpnConfigName.Trim();
+
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            MessageBox.Show("Укажите название конфигурации.", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (!TryResolvePendingVpnWireGuardConfig(out var wireGuardConfig, out var sourceFileName, out var resolveError))
+        {
+            MessageBox.Show(resolveError, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var existingByName = _settings.SavedProxyConfigs
+            .FirstOrDefault(x => x.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+
+        if (existingByName != null)
+        {
+            if (!VpnConfigStorage.IsVpnProtocol(existingByName.Protocol))
+            {
+                MessageBox.Show(
+                    "Конфигурация с таким названием уже используется для прокси.",
+                    "Ошибка",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            if (VpnConfigStorage.TryRead(existingByName.Id, out var storedConfig, out _, out _)
+                && string.Equals(storedConfig, wireGuardConfig, StringComparison.Ordinal))
+            {
+                MessageBox.Show(
+                    "Конфигурация не изменилась.",
+                    "Ошибка",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            if (!VpnConfigStorage.TrySave(existingByName.Id, wireGuardConfig, sourceFileName, out _, out var updateError))
+            {
+                MessageBox.Show(updateError, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            _settings.SelectedProxyConfigId = existingByName.Id;
+            _settings.ProxyLink = string.Empty;
+            SettingsService.Save(_settings);
+            LoadSavedProxyConfigs();
+            VpnConfigSaveNotice = $"Конфигурация «{name}» обновлена";
+            SetFooterLog($"Конфигурация «{name}» обновлена");
+            return;
+        }
+
+        if (HasDuplicateVpnConfig(wireGuardConfig))
+        {
+            MessageBox.Show(
+                "Такая конфигурация Amnezia уже сохранена.",
+                "Ошибка",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        var config = new SavedProxyConfiguration
+        {
+            Name = name,
+            Link = string.Empty,
+            Protocol = VpnConfigStorage.AwgProtocol
+        };
+
+        if (!VpnConfigStorage.TrySave(config.Id, wireGuardConfig, sourceFileName, out _, out var createError))
+        {
+            MessageBox.Show(createError, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        _settings.SavedProxyConfigs.Add(config);
+        _settings.SelectedProxyConfigId = config.Id;
+        _settings.ProxyLink = string.Empty;
+        SettingsService.Save(_settings);
+        LoadSavedProxyConfigs();
+        _isSyncingProxyConfig = true;
+        VpnConfigName = string.Empty;
+        _pendingVpnWireGuardConfig = null;
+        ClearPendingVpnConfigDisplay();
+        _isSyncingProxyConfig = false;
+        VpnConfigSaveNotice = $"Конфигурация «{name}» сохранена";
+        SetFooterLog($"Конфигурация «{name}» сохранена");
+    }
+
+    private bool HasDuplicateVpnConfig(string wireGuardConfig) =>
+        _settings.SavedProxyConfigs.Any(config =>
+            VpnConfigStorage.IsVpnProtocol(config.Protocol)
+            && VpnConfigStorage.TryRead(config.Id, out var storedConfig, out _, out _)
+            && string.Equals(storedConfig, wireGuardConfig, StringComparison.Ordinal));
+
+    private bool TryResolvePendingVpnWireGuardConfig(
+        out string wireGuardConfig,
+        out string sourceFileName,
+        out string error)
+    {
+        wireGuardConfig = string.Empty;
+        sourceFileName = string.Empty;
+        error = string.Empty;
+
+        if (!string.IsNullOrWhiteSpace(_pendingVpnWireGuardConfig))
+        {
+            wireGuardConfig = _pendingVpnWireGuardConfig;
+            sourceFileName = VpnConfigSourceName;
+            return true;
+        }
+
+        var existingByName = _settings.SavedProxyConfigs
+            .FirstOrDefault(x => x.Name.Equals(VpnConfigName.Trim(), StringComparison.OrdinalIgnoreCase));
+
+        if (existingByName != null
+            && VpnConfigStorage.IsVpnProtocol(existingByName.Protocol)
+            && VpnConfigStorage.TryRead(existingByName.Id, out wireGuardConfig, out var summary, out error))
+        {
+            sourceFileName = summary.SourceFileName;
+            return true;
+        }
+
+        error = "Перетащите файл конфигурации Amnezia (.conf)";
+        return false;
+    }
+
+    private bool TryResolveVpnWireGuardConfig(bool fromSettings, out string wireGuardConfig, out string error)
+    {
+        wireGuardConfig = string.Empty;
+        error = string.Empty;
+
+        if (fromSettings)
+        {
+            var selected = _settings.SavedProxyConfigs
+                .FirstOrDefault(x => x.Id == _settings.SelectedProxyConfigId);
+
+            if (selected != null
+                && VpnConfigStorage.IsVpnProtocol(selected.Protocol)
+                && VpnConfigStorage.TryRead(selected.Id, out wireGuardConfig, out _, out error))
+            {
+                return true;
+            }
+        }
+        else if (SelectedSavedProxyConfig != null
+            && VpnConfigStorage.IsVpnProtocol(SelectedSavedProxyConfig.Protocol)
+            && VpnConfigStorage.TryRead(SelectedSavedProxyConfig.Id, out wireGuardConfig, out _, out error))
+        {
+            return true;
+        }
+
+        error = "Выберите сохранённую VPN-конфигурацию Amnezia";
+        return false;
+    }
+
+    private bool IsSelectedConfigVpnFromSettings()
+    {
+        var selected = _settings.SavedProxyConfigs
+            .FirstOrDefault(x => x.Id == _settings.SelectedProxyConfigId);
+
+        return selected != null && VpnConfigStorage.IsVpnProtocol(selected.Protocol);
+    }
+
+    private bool IsSelectedConfigVpn() =>
+        SelectedSavedProxyConfig != null
+        && VpnConfigStorage.IsVpnProtocol(SelectedSavedProxyConfig.Protocol);
+
+    private bool CanRestoreLocalProxy()
+    {
+        var selected = _settings.SavedProxyConfigs
+            .FirstOrDefault(x => x.Id == _settings.SelectedProxyConfigId);
+
+        if (selected != null)
+        {
+            return VpnConfigStorage.IsVpnProtocol(selected.Protocol)
+                ? VpnConfigStorage.Exists(selected.Id)
+                : !string.IsNullOrWhiteSpace(selected.Link);
+        }
+
+        return !string.IsNullOrWhiteSpace(_settings.ProxyLink);
+    }
+
+    private bool IsAnyLocalProxyRunning() =>
+        _localProxyService.IsRunning || _awgProxyService.IsRunning;
+
+    private string GetLocalProxyAddress() =>
+        _awgProxyService.IsRunning
+            ? _awgProxyService.LocalProxyAddress
+            : _localProxyService.LocalProxyAddress;
+
+    private int GetActiveLocalProxyPort() =>
+        _awgProxyService.IsRunning
+            ? _awgProxyService.LocalPort
+            : _localProxyService.LocalPort;
+
+    private void RefreshVpnConfigDisplay(string configId)
+    {
+        if (VpnConfigStorage.TryRead(configId, out _, out var summary, out _))
+        {
+            VpnConfigEndpoint = summary.Endpoint;
+            VpnConfigSourceName = summary.SourceFileName;
+            return;
+        }
+
+        ClearPendingVpnConfigDisplay();
+    }
+
+    private void ClearPendingVpnConfigDisplay()
+    {
+        _pendingVpnWireGuardConfig = null;
+        VpnConfigEndpoint = string.Empty;
+        VpnConfigSourceName = string.Empty;
     }
 
     private void DeleteSavedProxyConfig(object? parameter)
@@ -1925,12 +2502,15 @@ public sealed class MainViewModel : ViewModelBase
         }
 
         _settings.SavedProxyConfigs.Remove(model);
+        VpnConfigStorage.Delete(model.Id);
 
         if (_settings.SelectedProxyConfigId == item.Id)
         {
             var next = _settings.SavedProxyConfigs.FirstOrDefault();
             _settings.SelectedProxyConfigId = next?.Id;
-            _settings.ProxyLink = next?.Link ?? string.Empty;
+            _settings.ProxyLink = next != null && !VpnConfigStorage.IsVpnProtocol(next.Protocol)
+                ? next.Link
+                : string.Empty;
         }
 
         SettingsService.Save(_settings);
@@ -1941,6 +2521,8 @@ public sealed class MainViewModel : ViewModelBase
             _isSyncingProxyConfig = true;
             ProxyConfigName = string.Empty;
             ProxyLink = string.Empty;
+            VpnConfigName = string.Empty;
+            ClearPendingVpnConfigDisplay();
             _isSyncingProxyConfig = false;
         }
 
@@ -1965,22 +2547,20 @@ public sealed class MainViewModel : ViewModelBase
 
     private async Task RefreshProxyHealthAsync()
     {
-        if (!_localProxyService.IsRunning || _localProxyService.LocalPort <= 0)
+        var localPort = GetActiveLocalProxyPort();
+        if (!IsAnyLocalProxyRunning() || localPort <= 0)
         {
             return;
         }
 
-        _proxyHealthCts?.Cancel();
-        _proxyHealthCts?.Dispose();
-        _proxyHealthCts = new CancellationTokenSource();
-        var cancellationToken = _proxyHealthCts.Token;
-
+        var generation = Interlocked.Increment(ref _proxyHealthGeneration);
         SetProxyHealthState(isChecking: true, isHealthy: false, isUnreachable: false, pingMs: null);
 
         try
         {
-            var result = await ProxyHealthChecker.CheckAsync(_localProxyService.LocalPort, cancellationToken);
-            if (cancellationToken.IsCancellationRequested)
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(12));
+            var result = await ProxyHealthChecker.CheckAsync(localPort, timeoutCts.Token);
+            if (generation != _proxyHealthGeneration)
             {
                 return;
             }
@@ -1993,17 +2573,29 @@ public sealed class MainViewModel : ViewModelBase
         }
         catch (OperationCanceledException)
         {
+            if (generation != _proxyHealthGeneration)
+            {
+                return;
+            }
+
+            SetProxyHealthState(
+                isChecking: false,
+                isHealthy: false,
+                isUnreachable: true,
+                pingMs: null);
         }
         catch
         {
-            if (!cancellationToken.IsCancellationRequested)
+            if (generation != _proxyHealthGeneration)
             {
-                SetProxyHealthState(
-                    isChecking: false,
-                    isHealthy: false,
-                    isUnreachable: true,
-                    pingMs: null);
+                return;
             }
+
+            SetProxyHealthState(
+                isChecking: false,
+                isHealthy: false,
+                isUnreachable: true,
+                pingMs: null);
         }
     }
 
@@ -2014,11 +2606,15 @@ public sealed class MainViewModel : ViewModelBase
         _isProxyUnreachable = isUnreachable;
         _proxyPingMs = pingMs;
 
-        if (_localProxyService.IsRunning && !isChecking)
+        if (isChecking)
+        {
+            _proxyHealthTimer.Stop();
+        }
+        else if (IsAnyLocalProxyRunning())
         {
             _proxyHealthTimer.Start();
         }
-        else if (!isChecking)
+        else
         {
             _proxyHealthTimer.Stop();
         }
@@ -2028,9 +2624,7 @@ public sealed class MainViewModel : ViewModelBase
 
     private void ResetProxyHealth()
     {
-        _proxyHealthCts?.Cancel();
-        _proxyHealthCts?.Dispose();
-        _proxyHealthCts = null;
+        Interlocked.Increment(ref _proxyHealthGeneration);
         _proxyHealthTimer.Stop();
         _isProxyHealthChecking = false;
         _isProxyHealthy = false;
@@ -2134,7 +2728,7 @@ public sealed class MainViewModel : ViewModelBase
 
         try
         {
-            await _domainListService.UpdateAllListsAsync();
+            await _domainListService.UpdateAllListsAsync().ConfigureAwait(false);
             SetFooterLog("Списки обновлены");
         }
         catch (Exception ex)
@@ -2143,11 +2737,12 @@ public sealed class MainViewModel : ViewModelBase
             SetFooterLog($"Не удалось обновить списки: {ex.Message}");
             if (showWarningOnError)
             {
-                MessageBox.Show(
-                    $"Не удалось обновить списки: {ex.Message}\nБудут использованы локальные копии, если они есть.",
-                    "Предупреждение",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Warning);
+                RunOnUiThread(() =>
+                    MessageBox.Show(
+                        $"Не удалось обновить списки: {ex.Message}\nБудут использованы локальные копии, если они есть.",
+                        "Предупреждение",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning));
             }
         }
         finally
@@ -2199,45 +2794,64 @@ public sealed class MainViewModel : ViewModelBase
 
     private async Task ApplyAsync(bool silent = false)
     {
-        ShowRussiaInsideRestrictionHint = false;
-        IsBusy = true;
-        SetFooterLog("Применение PAC...");
+        if (!silent)
+        {
+            ShowRussiaInsideRestrictionHint = false;
+            IsBusy = true;
+            SetFooterLog("Применение PAC...");
+        }
 
         try
         {
-            if (!InputParser.TryParsePort(PacPort, out var pacPort, out var pacPortError))
+            var pacPortText = silent ? _settings.PacPort.ToString() : PacPort;
+            if (!InputParser.TryParsePort(pacPortText, out var pacPort, out var pacPortError))
             {
                 SetFooterLog(pacPortError);
                 return;
             }
 
-            var pac = await TryBuildPacContentAsync(silent);
-            if (pac == null)
+            if (!silent)
             {
-                if (silent)
-                {
-                    SetFooterLog("Не удалось автоматически запустить PAC");
-                }
-
-                return;
+                UpdateTunnelingPreferences();
+                UpdateAppSettingsPreferences();
             }
 
-            await PacStorageService.SaveAsync(pac.Value.Content);
+            await Task.Run(async () =>
+            {
+                var pac = await TryBuildPacContentAsync(silent: true).ConfigureAwait(false);
+                if (pac == null)
+                {
+                    if (silent)
+                    {
+                        SetFooterLog("Не удалось автоматически запустить PAC");
+                    }
 
-            _pacHttpServer.SetPort(pacPort);
-            _pacHttpServer.SetPacContent(pac.Value.Content);
-            _pacHttpServer.Restart();
+                    return;
+                }
 
-            var pacUrl = _pacHttpServer.GetPacUrl(pac.Value.Hash);
-            WindowsProxySettings.EnablePac(pacUrl);
-            StartupService.SetEnabled(StartWithWindows, RunAsAdministrator);
-            SaveSettings(pac.Value.Hash, isActive: true);
+                await PacStorageService.SaveAsync(pac.Value.Content).ConfigureAwait(false);
 
-            RefreshPacState();
+                RunOnUiThread(() =>
+                {
+                    _pacHttpServer.SetPort(pacPort);
+                    _pacHttpServer.SetPacContent(pac.Value.Content);
+                    _pacHttpServer.Restart();
+                });
 
-            SetFooterLog(RouteAllTrafficThroughProxy
-                ? $"PAC применён: {pacUrl} · весь трафик через прокси"
-                : $"PAC применён: {pacUrl} · {pac.Value.DomainsCount} доменов, {pac.Value.SubnetsCount} подсетей");
+                var pacUrl = _pacHttpServer.GetPacUrl(pac.Value.Hash);
+                WindowsProxySettings.EnablePac(pacUrl);
+                StartupService.SetEnabled(_settings.StartWithWindows, _settings.RunAsAdministrator);
+
+                RunOnUiThread(() =>
+                {
+                    SaveSettings(pac.Value.Hash, isActive: true);
+                    RefreshPacState();
+                });
+
+                SetFooterLog(_settings.RouteAllTrafficThroughProxy
+                    ? $"PAC применён: {pacUrl} · весь трафик через прокси"
+                    : $"PAC применён: {pacUrl} · {pac.Value.DomainsCount} доменов, {pac.Value.SubnetsCount} подсетей");
+            }).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -2246,13 +2860,21 @@ public sealed class MainViewModel : ViewModelBase
         }
         finally
         {
-            IsBusy = false;
+            if (!silent)
+            {
+                RunOnUiThread(() => IsBusy = false);
+            }
         }
     }
 
     private async Task<(string Content, string Hash, int DomainsCount, int SubnetsCount)?> TryBuildPacContentAsync(bool silent = false)
     {
-        if (!InputParser.TryParseProxyAddress(ProxyAddress, out var host, out var port, out var error))
+        var proxyAddress = silent ? _settings.ProxyAddress : ProxyAddress;
+        var routeAllTraffic = silent ? _settings.RouteAllTrafficThroughProxy : RouteAllTrafficThroughProxy;
+        var customDomains = silent ? _settings.CustomDomains : CustomDomains.ToList();
+        var customIps = silent ? _settings.CustomIps : CustomIps.ToList();
+
+        if (!InputParser.TryParseProxyAddress(proxyAddress, out var host, out var port, out var error))
         {
             if (!silent)
             {
@@ -2262,13 +2884,13 @@ public sealed class MainViewModel : ViewModelBase
             return null;
         }
 
-        if (RouteAllTrafficThroughProxy)
+        if (routeAllTraffic)
         {
             var allTraffic = PacGenerator.GenerateAllTraffic(host, port);
             return (allTraffic.Content, allTraffic.Hash, 0, 0);
         }
 
-        if (_selectedListIds.Count == 0 && CustomDomains.Count == 0 && CustomIps.Count == 0)
+        if (_selectedListIds.Count == 0 && customDomains.Count == 0 && customIps.Count == 0)
         {
             if (!silent)
             {
@@ -2278,12 +2900,12 @@ public sealed class MainViewModel : ViewModelBase
             return null;
         }
 
-        await _domainListService.EnsureUpdatedAsync();
+        await _domainListService.EnsureUpdatedAsync().ConfigureAwait(false);
 
         var (domains, subnets) = await _domainListService.CollectEntriesAsync(
             _selectedListIds,
-            CustomDomains.ToList(),
-            CustomIps.ToList());
+            customDomains,
+            customIps).ConfigureAwait(false);
 
         if (domains.Count == 0 && subnets.Count == 0)
         {
@@ -2299,20 +2921,36 @@ public sealed class MainViewModel : ViewModelBase
         return (content, hash, domains.Count, subnets.Count);
     }
 
-    private void DisablePac()
+    private async Task DisablePacAsync()
     {
+        IsBusy = true;
+        SetFooterLog("Отключение PAC...");
+
         try
         {
-            WindowsProxySettings.DisablePac();
-            _pacHttpServer.Stop();
-            SaveSettings(null, isActive: false);
-            RefreshPacState();
+            await Task.Run(() =>
+            {
+                WindowsProxySettings.DisablePac();
+                _pacHttpServer.Stop();
+            }).ConfigureAwait(false);
+
+            RunOnUiThread(() =>
+            {
+                SaveSettings(null, isActive: false);
+                RefreshPacState();
+            });
             SetFooterLog("PAC отключён");
         }
         catch (Exception ex)
         {
             AppLog.Error(ex, "Ошибка отключения PAC");
-            MessageBox.Show(ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+            SetFooterLog($"Ошибка отключения PAC: {ex.Message}");
+            RunOnUiThread(() =>
+                MessageBox.Show(ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error));
+        }
+        finally
+        {
+            RunOnUiThread(() => IsBusy = false);
         }
     }
 
@@ -2358,7 +2996,8 @@ public sealed class MainViewModel : ViewModelBase
         await Task.WhenAll(
             CheckAppUpdateAsync(silent),
             CheckZapretUpdateAsync(silent),
-            CheckSingBoxUpdateAsync(silent));
+            CheckSingBoxUpdateAsync(silent),
+            CheckAmneziaBoxUpdateAsync(silent)).ConfigureAwait(false);
     }
 
     private async Task CheckAppUpdateManualAsync()
@@ -2380,26 +3019,32 @@ public sealed class MainViewModel : ViewModelBase
     {
         try
         {
-            var result = await AppUpdateService.CheckForUpdateAsync();
-            IsAppUpdateAvailable = result.UpdateAvailable;
-            _latestAppVersionLabel = result.LatestVersionLabel;
-            AppUpdateStatus = result.Message;
-
-            if (!silent)
+            var result = await AppUpdateService.CheckForUpdateAsync().ConfigureAwait(false);
+            RunOnUiThread(() =>
             {
-                SetFooterLog(result.Message);
-            }
+                IsAppUpdateAvailable = result.UpdateAvailable;
+                _latestAppVersionLabel = result.LatestVersionLabel;
+                AppUpdateStatus = result.Message;
+
+                if (!silent)
+                {
+                    SetFooterLog(result.Message);
+                }
+            });
         }
         catch (Exception ex)
         {
             AppLog.Error(ex, "Не удалось проверить обновления приложения");
-            IsAppUpdateAvailable = false;
-            AppUpdateStatus = $"Не удалось проверить обновления. Текущая версия: {AppVersionLabel}.";
-
-            if (!silent)
+            RunOnUiThread(() =>
             {
-                SetFooterLog($"Не удалось проверить обновления приложения: {ex.Message}");
-            }
+                IsAppUpdateAvailable = false;
+                AppUpdateStatus = $"Не удалось проверить обновления. Текущая версия: {AppVersionLabel}.";
+
+                if (!silent)
+                {
+                    SetFooterLog($"Не удалось проверить обновления приложения: {ex.Message}");
+                }
+            });
         }
     }
 
@@ -2480,37 +3125,46 @@ public sealed class MainViewModel : ViewModelBase
     {
         if (!silent)
         {
-            IsBusy = true;
-            SetFooterLog("Проверка обновлений zapret...");
+            RunOnUiThread(() =>
+            {
+                IsBusy = true;
+                SetFooterLog("Проверка обновлений zapret...");
+            });
         }
 
         try
         {
-            var result = await ZapretInstaller.CheckForUpdateAsync();
-            ZapretUpdateStatus = result.Message;
-            CanDownloadZapretUpdate = result.UpdateAvailable;
-
-            if (!silent)
+            var result = await ZapretInstaller.CheckForUpdateAsync().ConfigureAwait(false);
+            RunOnUiThread(() =>
             {
-                SetFooterLog(result.Message);
-            }
+                ZapretUpdateStatus = result.Message;
+                CanDownloadZapretUpdate = result.UpdateAvailable;
+
+                if (!silent)
+                {
+                    SetFooterLog(result.Message);
+                }
+            });
         }
         catch (Exception ex)
         {
             AppLog.Error(ex, "Не удалось проверить обновления zapret");
-            CanDownloadZapretUpdate = false;
-            ZapretUpdateStatus = $"Не удалось проверить обновления: {ex.Message}";
-
-            if (!silent)
+            RunOnUiThread(() =>
             {
-                SetFooterLog(ZapretUpdateStatus);
-            }
+                CanDownloadZapretUpdate = false;
+                ZapretUpdateStatus = $"Не удалось проверить обновления: {ex.Message}";
+
+                if (!silent)
+                {
+                    SetFooterLog(ZapretUpdateStatus);
+                }
+            });
         }
         finally
         {
             if (!silent)
             {
-                IsBusy = false;
+                RunOnUiThread(() => IsBusy = false);
             }
         }
     }
@@ -2596,37 +3250,46 @@ public sealed class MainViewModel : ViewModelBase
     {
         if (!silent)
         {
-            IsBusy = true;
-            SetFooterLog("Проверка обновлений sing-box...");
+            RunOnUiThread(() =>
+            {
+                IsBusy = true;
+                SetFooterLog("Проверка обновлений sing-box...");
+            });
         }
 
         try
         {
-            var result = await SingBoxInstaller.CheckForUpdateAsync();
-            SingBoxUpdateStatus = result.Message;
-            CanDownloadSingBoxUpdate = result.UpdateAvailable;
-
-            if (!silent)
+            var result = await SingBoxInstaller.CheckForUpdateAsync().ConfigureAwait(false);
+            RunOnUiThread(() =>
             {
-                SetFooterLog(result.Message);
-            }
+                SingBoxUpdateStatus = result.Message;
+                CanDownloadSingBoxUpdate = result.UpdateAvailable;
+
+                if (!silent)
+                {
+                    SetFooterLog(result.Message);
+                }
+            });
         }
         catch (Exception ex)
         {
             AppLog.Error(ex, "Не удалось проверить обновления sing-box");
-            CanDownloadSingBoxUpdate = false;
-            SingBoxUpdateStatus = $"Не удалось проверить обновления: {ex.Message}";
-
-            if (!silent)
+            RunOnUiThread(() =>
             {
-                SetFooterLog(SingBoxUpdateStatus);
-            }
+                CanDownloadSingBoxUpdate = false;
+                SingBoxUpdateStatus = $"Не удалось проверить обновления: {ex.Message}";
+
+                if (!silent)
+                {
+                    SetFooterLog(SingBoxUpdateStatus);
+                }
+            });
         }
         finally
         {
             if (!silent)
             {
-                IsBusy = false;
+                RunOnUiThread(() => IsBusy = false);
             }
         }
     }
@@ -2642,10 +3305,11 @@ public sealed class MainViewModel : ViewModelBase
 
         try
         {
-            if (_localProxyService.IsRunning || SingBoxInstaller.HasRunningProcesses())
+            if (IsAnyLocalProxyRunning() || SingBoxInstaller.HasRunningProcesses() || AwgWireproxyInstaller.HasRunningProcesses())
             {
                 SetFooterLog("Остановка локального прокси...");
                 _localProxyService.Stop();
+                _awgProxyService.Stop();
                 SaveProxySettings(isActive: false);
                 UpdateProxyUi();
             }
@@ -2703,6 +3367,127 @@ public sealed class MainViewModel : ViewModelBase
         CanDownloadSingBoxUpdate = false;
     }
 
+    private async Task CheckAmneziaBoxUpdateAsync(bool silent = false)
+    {
+        if (!silent)
+        {
+            RunOnUiThread(() =>
+            {
+                IsBusy = true;
+                SetFooterLog("Проверка обновлений wireproxy...");
+            });
+        }
+
+        try
+        {
+            var result = await AwgWireproxyInstaller.CheckForUpdateAsync().ConfigureAwait(false);
+            RunOnUiThread(() =>
+            {
+                AmneziaBoxUpdateStatus = result.Message;
+                CanDownloadAmneziaBoxUpdate = result.UpdateAvailable;
+
+                if (!silent)
+                {
+                    SetFooterLog(result.Message);
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error(ex, "Не удалось проверить обновления wireproxy");
+            RunOnUiThread(() =>
+            {
+                CanDownloadAmneziaBoxUpdate = false;
+                AmneziaBoxUpdateStatus = $"Не удалось проверить обновления: {ex.Message}";
+
+                if (!silent)
+                {
+                    SetFooterLog(AmneziaBoxUpdateStatus);
+                }
+            });
+        }
+        finally
+        {
+            if (!silent)
+            {
+                RunOnUiThread(() => IsBusy = false);
+            }
+        }
+    }
+
+    private async Task DownloadAmneziaBoxUpdateAsync()
+    {
+        if (!CanDownloadAmneziaBoxUpdate)
+        {
+            return;
+        }
+
+        IsBusy = true;
+
+        try
+        {
+            if (IsAnyLocalProxyRunning() || AwgWireproxyInstaller.HasRunningProcesses())
+            {
+                SetFooterLog("Остановка локального VPN...");
+                _awgProxyService.Stop();
+                _localProxyService.Stop();
+                SaveProxySettings(isActive: false);
+                UpdateProxyUi();
+            }
+
+            if (_processModeService.IsRunning)
+            {
+                SetFooterLog("Остановка process mode...");
+                StopProcessMode();
+                SaveProcessModeSettings(isActive: false);
+                UpdateProcessModeUi();
+            }
+
+            AwgWireproxyInstaller.StopRunningProcesses();
+            SetFooterLog("Скачивание обновления wireproxy...");
+
+            var progress = new Progress<string>(message =>
+            {
+                AmneziaBoxUpdateStatus = message;
+                SetFooterLog(message);
+            });
+            await AwgWireproxyInstaller.InstallOrUpdateAsync(progress, CancellationToken.None);
+            CanDownloadAmneziaBoxUpdate = false;
+            var version = AwgWireproxyInstaller.GetInstalledVersion();
+            AmneziaBoxUpdateStatus = string.IsNullOrWhiteSpace(version)
+                ? "Amnezia-box успешно установлен."
+                : $"Amnezia-box обновлён до версии {version}.";
+            SetFooterLog(AmneziaBoxUpdateStatus);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error(ex, "Ошибка обновления wireproxy");
+            var message = ex.InnerException?.Message ?? ex.Message;
+            AmneziaBoxUpdateStatus = $"Ошибка обновления: {message}";
+            SetFooterLog(AmneziaBoxUpdateStatus);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private void RefreshAmneziaBoxUpdateStatusHint()
+    {
+        if (!AwgWireproxyInstaller.IsInstalled())
+        {
+            AmneziaBoxUpdateStatus = "Wireproxy (AmneziaWG) не установлен.";
+            CanDownloadAmneziaBoxUpdate = false;
+            return;
+        }
+
+        var version = AwgWireproxyInstaller.GetInstalledVersion();
+        AmneziaBoxUpdateStatus = string.IsNullOrWhiteSpace(version)
+            ? "Amnezia-box установлен. Версия неизвестна — проверьте обновления."
+            : $"Установлена версия {version}.";
+        CanDownloadAmneziaBoxUpdate = false;
+    }
+
     private void SaveSettings(string? hash, bool isActive)
     {
         UpdateTunnelingPreferences();
@@ -2720,7 +3505,7 @@ public sealed class MainViewModel : ViewModelBase
             _settings.ProxyLink = ProxyLink.Trim();
         }
 
-        _settings.IsLocalProxyActive = _localProxyService.IsRunning;
+        _settings.IsLocalProxyActive = IsAnyLocalProxyRunning();
         SettingsService.Save(_settings);
     }
 
@@ -2787,6 +3572,23 @@ public sealed class MainViewModel : ViewModelBase
         _ => !string.IsNullOrWhiteSpace(ProcessModeLink)
     };
 
+    private bool HasProcessModeConfigFromSettings() => _settings.ProcessModeConnectionType switch
+    {
+        ProcessModeConnectionType.Amnezia => AmneziaConfigStorage.TryReadStored(out _, out _, out _),
+        _ => !string.IsNullOrWhiteSpace(_settings.ProcessModeLink)
+    };
+
+    private bool TryValidateProcessModeConnectionFromSettings(out string error)
+    {
+        error = string.Empty;
+
+        return _settings.ProcessModeConnectionType switch
+        {
+            ProcessModeConnectionType.Amnezia => AmneziaConfigStorage.TryReadStored(out _, out _, out error),
+            _ => ProxyLinkParser.TryParse(_settings.ProcessModeLink, out _, out error)
+        };
+    }
+
     private bool TryValidateProcessModeConnection(out string error)
     {
         error = string.Empty;
@@ -2798,21 +3600,26 @@ public sealed class MainViewModel : ViewModelBase
         };
     }
 
-    private ProxyProfile? TryGetProcessModeShadowsocksProfile()
+    private ProxyProfile? TryGetProcessModeShadowsocksProfile(bool fromSettings = false)
     {
-        if (ProcessModeConnectionType != ProcessModeConnectionType.Shadowsocks)
+        var connectionType = fromSettings ? _settings.ProcessModeConnectionType : ProcessModeConnectionType;
+        var link = fromSettings ? _settings.ProcessModeLink : ProcessModeLink;
+
+        if (connectionType != ProcessModeConnectionType.Shadowsocks)
         {
             return null;
         }
 
-        return ProxyLinkParser.TryParse(ProcessModeLink, out var profile, out _)
+        return ProxyLinkParser.TryParse(link, out var profile, out _)
             ? profile
             : null;
     }
 
-    private string? TryGetProcessModeAmneziaConfig()
+    private string? TryGetProcessModeAmneziaConfig(bool fromSettings = false)
     {
-        if (ProcessModeConnectionType != ProcessModeConnectionType.Amnezia)
+        var connectionType = fromSettings ? _settings.ProcessModeConnectionType : ProcessModeConnectionType;
+
+        if (connectionType != ProcessModeConnectionType.Amnezia)
         {
             return null;
         }
@@ -2954,6 +3761,30 @@ public sealed class MainViewModel : ViewModelBase
         FooterRight = WindowsProxySettings.IsPacEnabled(out _) ? "PAC: вкл" : "PAC: выкл";
     }
 
+    private void RunOnUiThread(Action action)
+    {
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (dispatcher == null || dispatcher.CheckAccess())
+        {
+            action();
+            return;
+        }
+
+        dispatcher.InvokeAsync(action);
+    }
+
+    private Task RunOnUiThreadAsync(Action action)
+    {
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (dispatcher == null || dispatcher.CheckAccess())
+        {
+            action();
+            return Task.CompletedTask;
+        }
+
+        return dispatcher.InvokeAsync(action).Task;
+    }
+
     private void SetFooterLog(string message)
     {
         if (string.IsNullOrWhiteSpace(message))
@@ -2961,8 +3792,11 @@ public sealed class MainViewModel : ViewModelBase
             return;
         }
 
-        AppLog.Info(message);
-        FooterLog = message;
+        RunOnUiThread(() =>
+        {
+            AppLog.Info(message);
+            FooterLog = message;
+        });
     }
 
     private async Task ToggleBypassAsync()

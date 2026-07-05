@@ -33,13 +33,8 @@ public sealed class LocalProxyService : IDisposable
         {
             lock (_sync)
             {
-                if (_process is { HasExited: false })
-                {
-                    return true;
-                }
+                return _process is { HasExited: false };
             }
-
-            return LocalPort > 0 && IsPortListening(LocalPort) && HasManagedSingBoxProcess();
         }
     }
 
@@ -274,8 +269,8 @@ public sealed class LocalProxyService : IDisposable
     {
         try
         {
-            var executable = ResolveExecutablePath();
-            return process.MainModule?.FileName.Equals(executable, StringComparison.OrdinalIgnoreCase) == true;
+            var executableName = Path.GetFileNameWithoutExtension(ResolveExecutablePath());
+            return process.ProcessName.Equals(executableName, StringComparison.OrdinalIgnoreCase);
         }
         catch
         {

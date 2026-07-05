@@ -51,7 +51,8 @@
                 <Expander IsExpanded="False"
                           Margin="0,0,0,16"
                           Expanded="OnAddConfigExpanderChanged"
-                          Collapsed="OnAddConfigExpanderChanged">
+                          Collapsed="OnAddConfigExpanderChanged"
+                          IsEnabled="{Binding IsProxyEditingEnabled}">
 
                     <Expander.Header>
 
@@ -59,7 +60,7 @@
 
                             <TextBlock Text="Добавить конфигурацию" FontWeight="SemiBold" />
 
-                            <TextBlock Text="Название и строка подключения vless, vmess, trojan или ss"
+                            <TextBlock Text="Прокси (vless, vmess, trojan, ss) или VPN AmneziaWG"
                                        Style="{StaticResource CaptionText}"
                                        Margin="0,2,0,0" />
 
@@ -67,56 +68,173 @@
 
                     </Expander.Header>
 
-                    <StackPanel Margin="0,8,0,0">
+                    <TabControl Style="{StaticResource SettingsTabControl}" Margin="0,8,0,0">
 
-                        <TextBlock Text="Название конфигурации" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
+                    <TabItem Header="Proxy">
 
-                        <TextBox Text="{Binding ProxyConfigName, UpdateSourceTrigger=PropertyChanged}"
+                        <StackPanel Margin="0,12,0,0">
 
-                                 IsEnabled="{Binding IsProxyEditingEnabled}" Margin="0,0,0,12"
+                            <TextBlock Text="Название конфигурации" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
 
-                                 ctrl:HintProperties.Hint="Мой сервер" />
+                            <TextBox Text="{Binding ProxyConfigName, UpdateSourceTrigger=PropertyChanged}"
 
+                                     Margin="0,0,0,12"
 
-
-                        <TextBlock Text="Строка подключения" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
-
-                        <TextBox Text="{Binding ProxyLink, UpdateSourceTrigger=PropertyChanged}"
-
-                                 Style="{StaticResource MultilineTextBox}"
-
-                                 Height="88" VerticalScrollBarVisibility="Auto" Margin="0,0,0,8"
-
-                                 IsEnabled="{Binding IsProxyEditingEnabled}"
-
-                                 ctrl:HintProperties.Hint="vless://uuid@server:443?security=reality&amp;type=tcp#remark" />
+                                     ctrl:HintProperties.Hint="Мой сервер" />
 
 
 
-                        <Grid Margin="0,0,0,0">
+                            <TextBlock Text="Строка подключения" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
 
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="vless, vmess, trojan или ss"
 
-                            <Button Grid.Column="0"
-                                    Content="Сохранить конфигурацию"
-                                    Command="{Binding SaveProxyConfigCommand}"
-                                    Style="{StaticResource PrimaryButton}"
-                                    MinWidth="180" />
+                                       Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
 
-                            <TextBlock Grid.Column="1"
-                                       Text="{Binding ProxyConfigSaveNotice}"
-                                       VerticalAlignment="Center"
-                                       Margin="12,0,0,0"
-                                       Foreground="{StaticResource SuccessBrush}"
-                                       FontSize="12"
-                                       Visibility="{Binding HasProxyConfigSaveNotice, Converter={StaticResource BoolToVis}}" />
+                            <TextBox Text="{Binding ProxyLink, UpdateSourceTrigger=PropertyChanged}"
 
-                        </Grid>
+                                     Style="{StaticResource MultilineTextBox}"
 
-                    </StackPanel>
+                                     Height="88" VerticalScrollBarVisibility="Auto" Margin="0,0,0,12"
+
+                                     ctrl:HintProperties.Hint="vless://uuid@server:443?security=reality&amp;type=tcp#remark" />
+
+
+
+                            <Grid>
+
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+
+                                <Button Grid.Column="0"
+                                        Content="Сохранить конфигурацию"
+                                        Command="{Binding SaveProxyConfigCommand}"
+                                        Style="{StaticResource PrimaryButton}"
+                                        MinWidth="180" />
+
+                                <TextBlock Grid.Column="1"
+                                           Text="{Binding ProxyConfigSaveNotice}"
+                                           VerticalAlignment="Center"
+                                           Margin="12,0,0,0"
+                                           Foreground="{StaticResource SuccessBrush}"
+                                           FontSize="12"
+                                           Visibility="{Binding HasProxyConfigSaveNotice, Converter={StaticResource BoolToVis}}" />
+
+                            </Grid>
+
+                        </StackPanel>
+
+                    </TabItem>
+
+
+
+                    <TabItem Header="VPN">
+
+                        <StackPanel Margin="0,12,0,0">
+
+                            <TextBlock Text="Название конфигурации" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
+
+                            <TextBox Text="{Binding VpnConfigName, UpdateSourceTrigger=PropertyChanged}"
+
+                                     Margin="0,0,0,12"
+
+                                     ctrl:HintProperties.Hint="Мой AWG" />
+
+
+
+                            <TextBlock Text="Конфигурация AmneziaWG" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
+
+                            <Border x:Name="VpnConfigDropZone"
+
+                                    AllowDrop="True"
+
+                                    DragOver="OnVpnConfigDragOver"
+
+                                    Drop="OnVpnConfigDrop"
+
+                                    Background="{StaticResource InputBrush}"
+
+                                    BorderBrush="{StaticResource BorderBrush}"
+
+                                    BorderThickness="1"
+
+                                    CornerRadius="6"
+
+                                    Padding="10,8"
+
+                                    MinHeight="72"
+
+                                    Margin="0,0,0,12">
+
+                                <Grid VerticalAlignment="Center">
+
+                                    <TextBlock VerticalAlignment="Center"
+
+                                               TextWrapping="Wrap"
+
+                                               Foreground="{StaticResource TextSecondaryBrush}"
+
+                                               Text="Перетащите сюда файл конфигурации (.conf)"
+
+                                               Visibility="{Binding IsVpnConfigDropHintVisible, Converter={StaticResource BoolToVis}}" />
+
+
+
+                                    <StackPanel Visibility="{Binding HasPendingVpnConfig, Converter={StaticResource BoolToVis}}">
+
+                                        <TextBlock Text="{Binding VpnConfigEndpoint, Mode=OneWay}"
+
+                                                   FontWeight="SemiBold"
+
+                                                   Foreground="{StaticResource TextPrimaryBrush}"
+
+                                                   TextTrimming="CharacterEllipsis" />
+
+                                        <TextBlock Text="{Binding VpnConfigSourceName, Mode=OneWay}"
+
+                                                   Style="{StaticResource CaptionText}"
+
+                                                   Margin="0,2,0,0"
+
+                                                   TextTrimming="CharacterEllipsis" />
+
+                                    </StackPanel>
+
+                                </Grid>
+
+                            </Border>
+
+
+
+                            <Grid>
+
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+
+                                <Button Grid.Column="0"
+                                        Content="Применить конфигурацию"
+                                        Command="{Binding SaveVpnConfigCommand}"
+                                        Style="{StaticResource PrimaryButton}"
+                                        MinWidth="180" />
+
+                                <TextBlock Grid.Column="1"
+                                           Text="{Binding VpnConfigSaveNotice}"
+                                           VerticalAlignment="Center"
+                                           Margin="12,0,0,0"
+                                           Foreground="{StaticResource SuccessBrush}"
+                                           FontSize="12"
+                                           Visibility="{Binding HasVpnConfigSaveNotice, Converter={StaticResource BoolToVis}}" />
+
+                            </Grid>
+
+                        </StackPanel>
+
+                    </TabItem>
+
+                </TabControl>
 
                 </Expander>
 

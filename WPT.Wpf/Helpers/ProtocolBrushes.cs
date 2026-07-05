@@ -21,8 +21,11 @@ public static class ProtocolBrushes
             "vmess" => VmessBrush,
             "trojan" => TrojanBrush,
             "ss" => ShadowsocksBrush,
+            "awg" => AwgBrush,
             _ => DefaultBrush
         };
+
+    private static readonly SolidColorBrush AwgBrush = CreateBrush(0x00, 0x96, 0x88);
 
     private static SolidColorBrush CreateBrush(byte r, byte g, byte b)
     {

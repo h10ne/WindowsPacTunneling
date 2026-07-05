@@ -2,6 +2,8 @@ using System.Windows;
 
 using System.Windows.Interop;
 
+using WPT.Core.Services;
+
 using WPT.Wpf.Services;
 
 using WPT.Wpf.Ui;
@@ -47,21 +49,33 @@ public partial class MainWindow : Window
 
 
 
-    private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
-
+    private void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
-
         NativeTheme.ApplyDarkTitleBar(this);
-
-        await _viewModel.InitializeAsync();
-
         _trayService.UpdateMenu();
+        _ = CompleteStartupAsync();
+    }
 
-        if (_viewModel.StartMinimizedToTray)
+    private async Task CompleteStartupAsync()
+    {
+        try
         {
-            _trayService.MinimizeToTray(showNotification: false);
+            await _viewModel.InitializeAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error(ex, "Ошибка инициализации приложения");
         }
 
+        await Dispatcher.InvokeAsync(() =>
+        {
+            _trayService.UpdateMenu();
+
+            if (_viewModel.StartMinimizedToTray)
+            {
+                _trayService.MinimizeToTray(showNotification: false);
+            }
+        });
     }
 
     public void StopLocalProxyOnExit() => _viewModel.StopLocalProxyOnExit();

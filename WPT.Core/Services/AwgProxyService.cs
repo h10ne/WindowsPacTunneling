@@ -9,13 +9,15 @@ public sealed class AwgProxyService : IDisposable
     private readonly object _sync = new();
     private readonly string _instanceName;
     private readonly string _configPath;
+    private readonly string _wireGuardConfigPath;
     private readonly string _pidPath;
 
     public AwgProxyService(string? instanceName = null)
     {
         _instanceName = string.IsNullOrWhiteSpace(instanceName) ? "default" : instanceName;
-        _configPath = AppPaths.AmneziaBoxConfigFileFor(_instanceName);
-        _pidPath = AppPaths.AmneziaBoxPidFileFor(_instanceName);
+        _configPath = AppPaths.AwgProxyConfigFileFor(_instanceName);
+        _wireGuardConfigPath = AppPaths.WireGuardConfigFileFor(_instanceName);
+        _pidPath = AppPaths.AwgProxyPidFileFor(_instanceName);
     }
 
     public bool IsRunning
@@ -24,13 +26,8 @@ public sealed class AwgProxyService : IDisposable
         {
             lock (_sync)
             {
-                if (_process is { HasExited: false })
-                {
-                    return true;
-                }
+                return _process is { HasExited: false };
             }
-
-            return LocalPort > 0 && LocalProxyService.IsPortListening(LocalPort) && HasManagedProcess();
         }
     }
 
@@ -47,6 +44,7 @@ public sealed class AwgProxyService : IDisposable
     public async Task StartAsync(
         string wireGuardConfig,
         int localPort,
+        bool forPacProxy,
         IProgress<string>? progress,
         CancellationToken cancellationToken)
     {
@@ -60,18 +58,23 @@ public sealed class AwgProxyService : IDisposable
             throw new ArgumentException("Пустая конфигурация WireGuard.", nameof(wireGuardConfig));
         }
 
+        StopLegacyAmneziaBox();
         Stop();
 
-        await AmneziaBoxInstaller.EnsureInstalledAsync(progress, cancellationToken);
+        await AwgWireproxyInstaller.EnsureInstalledAsync(progress, cancellationToken);
 
         var executable = ResolveExecutablePath();
         if (!File.Exists(executable))
         {
-            throw new FileNotFoundException("Не найден amnezia-box.exe.", executable);
+            throw new FileNotFoundException("Не найден wireproxy.exe.", executable);
         }
 
         AppPaths.EnsureRoot();
-        var config = AmneziaBoxConfigBuilder.BuildForProcessMode(wireGuardConfig, localPort);
+        await File.WriteAllTextAsync(_wireGuardConfigPath, wireGuardConfig, cancellationToken);
+
+        var config = forPacProxy
+            ? AwgWireproxyConfigBuilder.BuildForProxy(_wireGuardConfigPath, localPort)
+            : AwgWireproxyConfigBuilder.BuildForProcessMode(_wireGuardConfigPath, localPort);
         await File.WriteAllTextAsync(_configPath, config, cancellationToken);
 
         progress?.Report("Проверка конфигурации AmneziaWG...");
@@ -85,7 +88,7 @@ public sealed class AwgProxyService : IDisposable
         var psi = new ProcessStartInfo
         {
             FileName = executable,
-            Arguments = $"run -c \"{_configPath}\"",
+            Arguments = $"-c \"{_configPath}\" -s",
             UseShellExecute = false,
             CreateNoWindow = true,
             RedirectStandardError = true,
@@ -96,6 +99,11 @@ public sealed class AwgProxyService : IDisposable
         process.ErrorDataReceived += (_, e) =>
         {
             if (string.IsNullOrWhiteSpace(e.Data))
+            {
+                return;
+            }
+
+            if (e.Data.Contains("read request failed: EOF", StringComparison.OrdinalIgnoreCase))
             {
                 return;
             }
@@ -115,7 +123,7 @@ public sealed class AwgProxyService : IDisposable
         if (!process.Start())
         {
             process.Dispose();
-            throw new InvalidOperationException("Не удалось запустить amnezia-box.");
+            throw new InvalidOperationException("Не удалось запустить wireproxy.");
         }
 
         process.BeginErrorReadLine();
@@ -128,20 +136,20 @@ public sealed class AwgProxyService : IDisposable
 
         WritePidFile(process.Id);
 
-        progress?.Report("Ожидание локального SOCKS (AmneziaWG)...");
+        progress?.Report("Ожидание локального прокси (AmneziaWG)...");
         if (!await WaitForPortAsync(localPort, process, cancellationToken))
         {
             var details = BuildFailureDetails(process, stderrLines);
             Stop();
             throw new InvalidOperationException(
-                $"Локальный SOCKS не ответил на порту {localPort}.{details}");
+                $"Локальный прокси не ответил на порту {localPort}.{details}");
         }
 
         if (process.HasExited)
         {
             var details = BuildFailureDetails(process, stderrLines);
             Stop();
-            throw new InvalidOperationException($"amnezia-box завершился сразу после запуска.{details}");
+            throw new InvalidOperationException($"wireproxy завершился сразу после запуска.{details}");
         }
     }
 
@@ -161,7 +169,7 @@ public sealed class AwgProxyService : IDisposable
         var psi = new ProcessStartInfo
         {
             FileName = executable,
-            Arguments = $"check -c \"{configPath}\"",
+            Arguments = $"-n -c \"{configPath}\"",
             UseShellExecute = false,
             CreateNoWindow = true,
             RedirectStandardError = true,
@@ -172,7 +180,7 @@ public sealed class AwgProxyService : IDisposable
         using var process = Process.Start(psi);
         if (process == null)
         {
-            return "Не удалось запустить проверку конфигурации amnezia-box.";
+            return "Не удалось запустить проверку конфигурации wireproxy.";
         }
 
         var stderr = await process.StandardError.ReadToEndAsync(cancellationToken);
@@ -186,7 +194,7 @@ public sealed class AwgProxyService : IDisposable
 
         var message = string.IsNullOrWhiteSpace(stderr) ? stdout.Trim() : stderr.Trim();
         return string.IsNullOrWhiteSpace(message)
-            ? $"amnezia-box отклонил конфиг (код {process.ExitCode})."
+            ? $"wireproxy отклонил конфиг (код {process.ExitCode})."
             : $"Ошибка конфигурации AmneziaWG: {message}";
     }
 
@@ -195,7 +203,7 @@ public sealed class AwgProxyService : IDisposable
         var builder = new StringBuilder();
         if (process.HasExited)
         {
-            builder.Append($" amnezia-box завершился (код {process.ExitCode}).");
+            builder.Append($" wireproxy завершился (код {process.ExitCode}).");
         }
 
         lock (stderrLines)
@@ -314,8 +322,8 @@ public sealed class AwgProxyService : IDisposable
     {
         try
         {
-            var executable = ResolveExecutablePath();
-            return process.MainModule?.FileName.Equals(executable, StringComparison.OrdinalIgnoreCase) == true;
+            var executableName = Path.GetFileNameWithoutExtension(ResolveExecutablePath());
+            return process.ProcessName.Equals(executableName, StringComparison.OrdinalIgnoreCase);
         }
         catch
         {
@@ -358,7 +366,35 @@ public sealed class AwgProxyService : IDisposable
 
     private static string ResolveExecutablePath()
     {
-        return AmneziaBoxInstaller.ExecutablePath;
+        return AwgWireproxyInstaller.ExecutablePath;
+    }
+
+    private static void StopLegacyAmneziaBox()
+    {
+        var legacyExecutable = Path.Combine(AppPaths.BinDirectory, "amnezia-box.exe");
+        if (!File.Exists(legacyExecutable))
+        {
+            return;
+        }
+
+        foreach (var process in Process.GetProcessesByName("amnezia-box"))
+        {
+            try
+            {
+                if (process.MainModule?.FileName.Equals(legacyExecutable, StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    process.Kill(entireProcessTree: true);
+                    process.WaitForExit(3000);
+                }
+            }
+            catch
+            {
+            }
+            finally
+            {
+                process.Dispose();
+            }
+        }
     }
 
     private static async Task<bool> WaitForPortAsync(int port, Process process, CancellationToken cancellationToken)

@@ -15,6 +15,15 @@ public static class AppPaths
 
     public static string SingBoxVersionFile => Path.Combine(BinDirectory, "sing-box-version.txt");
 
+    public static string AwgWireproxyVersionFile => Path.Combine(BinDirectory, "awg-wireproxy-version.txt");
+
+    public static string AwgWireproxyCapabilityFile => Path.Combine(BinDirectory, "awg-wireproxy.capability");
+
+    public static string VpnConfigsDirectory => Path.Combine(Root, "vpn-configs");
+
+    public static string VpnConfigFileFor(string configId) =>
+        Path.Combine(VpnConfigsDirectory, $"{configId}.conf");
+
     public static string SingBoxConfigFile => Path.Combine(Root, "sing-box.json");
 
     public static string SingBoxPidFile => Path.Combine(Root, "sing-box.pid");
@@ -33,12 +42,6 @@ public static class AppPaths
 
     public static string AwgProxyPidFileFor(string instanceName) =>
         Path.Combine(Root, $"awgproxy-{instanceName}.pid");
-
-    public static string AmneziaBoxConfigFileFor(string instanceName) =>
-        Path.Combine(Root, $"amnezia-box-{instanceName}.json");
-
-    public static string AmneziaBoxPidFileFor(string instanceName) =>
-        Path.Combine(Root, $"amnezia-box-{instanceName}.pid");
 
     public static string ProcessModeAmneziaConfigFile => Path.Combine(Root, "amnezia-processmode.conf");
 
@@ -66,7 +69,9 @@ public static class AppPaths
         Directory.CreateDirectory(Root);
         Directory.CreateDirectory(ListsDirectory);
         Directory.CreateDirectory(BinDirectory);
+        Directory.CreateDirectory(VpnConfigsDirectory);
         Directory.CreateDirectory(LogsDirectory);
     }
+
 
 }
