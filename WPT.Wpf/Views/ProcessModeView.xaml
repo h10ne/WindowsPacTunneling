@@ -301,8 +301,6 @@
 
             <StackPanel Orientation="Horizontal">
 
-                <Button Content="Применить" Style="{StaticResource PrimaryButton}" Command="{Binding ApplyProcessModeCommand}" Margin="0,0,8,0" />
-
                 <Button Content="{Binding ProcessModeToggleLabel}" Command="{Binding ToggleProcessModeCommand}" MinWidth="140">
 
                     <Button.Style>

@@ -152,7 +152,6 @@ public sealed class MainViewModel : ViewModelBase
         RemoveDomainCommand = new RelayCommand(p => RemoveCustomDomain((string)p!));
         AddIpCommand = new RelayCommand(AddCustomIp);
         RemoveIpCommand = new RelayCommand(p => RemoveCustomIp((string)p!));
-        ApplyProcessModeCommand = new RelayCommand(ApplyProcessMode, () => !IsBusy && !IsProcessModeRunning);
         ToggleProcessModeCommand = new RelayCommand(async () => await ToggleProcessModeAsync(), () => !IsProcessModeOperating);
         AddProcessModeAppCommand = new RelayCommand(AddProcessModeApp);
         RemoveProcessModeAppCommand = new RelayCommand(p => RemoveProcessModeApp((string)p!));
@@ -1112,8 +1111,6 @@ public sealed class MainViewModel : ViewModelBase
 
     public RelayCommand RemoveIpCommand { get; }
 
-    public RelayCommand ApplyProcessModeCommand { get; }
-
     public RelayCommand ToggleProcessModeCommand { get; }
 
     public RelayCommand AddProcessModeAppCommand { get; }
@@ -1654,36 +1651,6 @@ public sealed class MainViewModel : ViewModelBase
     }
 
     private void RemoveProcessModeApp(string app) => ProcessModeApplications.Remove(app);
-
-    private void ApplyProcessMode()
-    {
-        if (IsProcessModeRunning)
-        {
-            return;
-        }
-
-        if (!InputParser.TryParsePort(ProcessModePort, out var port, out var portError))
-        {
-            MessageBox.Show(portError, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
-        if (HasProcessModeConfig()
-            && !TryValidateProcessModeConnection(out var parseError))
-        {
-            MessageBox.Show(parseError, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
-        _processModeService.Prepare(port);
-        SaveProcessModeSettings(isActive: _processModeService.IsRunning);
-        SetFooterLog("Настройки Process Mode сохранены");
-        MessageBox.Show(
-            "Настройки Process Mode сохранены.",
-            "Готово",
-            MessageBoxButton.OK,
-            MessageBoxImage.Information);
-    }
 
     private async Task ToggleProcessModeAsync()
     {
