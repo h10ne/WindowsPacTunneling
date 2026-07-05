@@ -70,6 +70,10 @@
 
                                  IsChecked="{Binding IsProxyPage, Mode=TwoWay}" />
 
+                    <RadioButton Content="Process Mode" Style="{StaticResource NavButton}" GroupName="Nav"
+
+                                 IsChecked="{Binding IsProcessModePage, Mode=TwoWay}" />
+
                     <RadioButton Content="Обход" Style="{StaticResource NavButton}" GroupName="Nav"
 
                                  IsChecked="{Binding IsBypassPage, Mode=TwoWay}" />
@@ -102,13 +106,17 @@
 
                                  Visibility="{Binding SelectedSection, Converter={StaticResource SectionVis}, ConverterParameter=1}" />
 
+                <views:ProcessModeView DataContext="{Binding}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+
+                                       Visibility="{Binding SelectedSection, Converter={StaticResource SectionVis}, ConverterParameter=2}" />
+
                 <views:BypassView DataContext="{Binding}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
 
-                                  Visibility="{Binding SelectedSection, Converter={StaticResource SectionVis}, ConverterParameter=2}" />
+                                  Visibility="{Binding SelectedSection, Converter={StaticResource SectionVis}, ConverterParameter=3}" />
 
                 <views:SettingsView DataContext="{Binding}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
 
-                                    Visibility="{Binding SelectedSection, Converter={StaticResource SectionVis}, ConverterParameter=3}" />
+                                    Visibility="{Binding SelectedSection, Converter={StaticResource SectionVis}, ConverterParameter=4}" />
 
             </Grid>
 

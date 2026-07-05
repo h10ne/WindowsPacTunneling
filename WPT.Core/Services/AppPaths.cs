@@ -15,6 +15,10 @@ public static class AppPaths
 
     public static string SingBoxVersionFile => Path.Combine(BinDirectory, "sing-box-version.txt");
 
+    public static string ProcessModeSingBoxExecutable => Path.Combine(BinDirectory, "sing-box-pm.exe");
+
+    public static string ProcessModeSingBoxVersionFile => Path.Combine(BinDirectory, "sing-box-pm-version.txt");
+
     public static string AwgWireproxyVersionFile => Path.Combine(BinDirectory, "awg-wireproxy-version.txt");
 
     public static string AwgWireproxyCapabilityFile => Path.Combine(BinDirectory, "awg-wireproxy.capability");

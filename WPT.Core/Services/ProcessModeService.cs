@@ -32,7 +32,7 @@ public sealed class ProcessModeService : IDisposable
 
     public async Task StartAsync(
         ProcessModeConnectionType connectionType,
-        ProxyProfile? ssProfile,
+        ProxyProfile? proxyProfile,
         string? amneziaConfig,
         int localPort,
         IReadOnlyList<string> applications,
@@ -49,25 +49,36 @@ public sealed class ProcessModeService : IDisposable
         AdminHelper.EnsureAdminOrThrow();
         RedirectorInstaller.EnsureInstalled(progress);
 
-        progress?.Report(connectionType == ProcessModeConnectionType.Amnezia
-            ? "Запуск локального SOCKS (AmneziaWG)..."
-            : "Запуск локального прокси...");
+        progress?.Report(connectionType switch
+        {
+            ProcessModeConnectionType.Amnezia => "Запуск локального SOCKS (AmneziaWG)...",
+            ProcessModeConnectionType.Vless => "Запуск локального SOCKS (VLESS + XUDP)...",
+            _ => "Запуск локального прокси..."
+        });
 
         switch (connectionType)
         {
             case ProcessModeConnectionType.Shadowsocks:
-                if (ssProfile == null)
+            case ProcessModeConnectionType.Vless:
+                if (proxyProfile == null)
                 {
-                    throw new ArgumentException("Не указан профиль Shadowsocks.", nameof(ssProfile));
+                    throw new ArgumentException("Не указан профиль прокси.", nameof(proxyProfile));
                 }
 
-                if (!string.Equals(ssProfile.Protocol, "ss", StringComparison.OrdinalIgnoreCase))
+                if (connectionType == ProcessModeConnectionType.Shadowsocks
+                    && !string.Equals(proxyProfile.Protocol, "ss", StringComparison.OrdinalIgnoreCase))
                 {
-                    throw new NotSupportedException("Process Mode с Redirector для Shadowsocks поддерживает только ss://.");
+                    throw new NotSupportedException("Process Mode для Shadowsocks поддерживает только ss://.");
                 }
 
-                await _proxyService.StartAsync(ssProfile, localPort, progress: null, cancellationToken);
-                _activeConnectionType = ProcessModeConnectionType.Shadowsocks;
+                if (connectionType == ProcessModeConnectionType.Vless
+                    && !string.Equals(proxyProfile.Protocol, "vless", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new NotSupportedException("Process Mode для VLESS поддерживает только vless://.");
+                }
+
+                await _proxyService.StartAsync(proxyProfile, localPort, progress: null, cancellationToken);
+                _activeConnectionType = connectionType;
                 break;
 
             case ProcessModeConnectionType.Amnezia:
@@ -102,7 +113,7 @@ public sealed class ProcessModeService : IDisposable
 
     public async Task TryRestoreAsync(
         ProcessModeConnectionType connectionType,
-        ProxyProfile? ssProfile,
+        ProxyProfile? proxyProfile,
         string? amneziaConfig,
         int localPort,
         IReadOnlyList<string> applications,
@@ -142,7 +153,7 @@ public sealed class ProcessModeService : IDisposable
 
         await StartAsync(
             connectionType,
-            ssProfile,
+            proxyProfile,
             amneziaConfig,
             localPort,
             applications,
@@ -189,6 +200,7 @@ public sealed class ProcessModeService : IDisposable
     {
         ProcessModeConnectionType.Amnezia => _awgProxyService.IsRunning,
         ProcessModeConnectionType.Shadowsocks => _proxyService.IsRunning,
+        ProcessModeConnectionType.Vless => _proxyService.IsRunning,
         _ => false
     };
 
@@ -196,6 +208,7 @@ public sealed class ProcessModeService : IDisposable
     {
         ProcessModeConnectionType.Amnezia => _awgProxyService.LocalPort,
         ProcessModeConnectionType.Shadowsocks => _proxyService.LocalPort,
+        ProcessModeConnectionType.Vless => _proxyService.LocalPort,
         _ => _proxyService.LocalPort > 0 ? _proxyService.LocalPort : _awgProxyService.LocalPort
     };
 

@@ -49,11 +49,7 @@ public static class SingBoxConfigBuilder
                     ["tag"] = "socks-in",
                     ["listen"] = "127.0.0.1",
                     ["listen_port"] = localPort,
-                    ["udp_timeout"] = "5m",
-                    // Redirector шлёт SOCKS CONNECT по IP; без override SNI TLS к Discord ломается.
-                    ["sniff"] = true,
-                    ["sniff_override_destination"] = true,
-                    ["sniff_timeout"] = "1s"
+                    ["udp_timeout"] = "5m"
                 }
             },
             ["outbounds"] = new JsonArray

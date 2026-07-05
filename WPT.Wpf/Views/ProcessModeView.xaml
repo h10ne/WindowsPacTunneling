@@ -64,9 +64,9 @@
 
 
 
-                <StackPanel Visibility="{Binding IsProcessModeSsSelected, Converter={StaticResource BoolToVis}}">
+                <StackPanel Visibility="{Binding IsProcessModeLinkSelected, Converter={StaticResource BoolToVis}}">
 
-                    <TextBlock Text="Ссылка Shadowsocks" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
+                    <TextBlock Text="{Binding ProcessModeLinkCaption}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
 
                     <TextBox Text="{Binding ProcessModeLink, UpdateSourceTrigger=PropertyChanged}"
 
@@ -76,7 +76,7 @@
 
                              IsEnabled="{Binding IsProcessModeEditingEnabled}"
 
-                             ctrl:HintProperties.Hint="ss://method:password@server:port#remark" />
+                             ctrl:HintProperties.Hint="{Binding ProcessModeLinkHint}" />
 
                 </StackPanel>
 
@@ -282,7 +282,7 @@
 
                             <TextBox Text="{Binding NewProcessModeApp, UpdateSourceTrigger=PropertyChanged}"
 
-                                     ctrl:HintProperties.Hint="Discord.exe" />
+                                     ctrl:HintProperties.Hint="Discord или Update" />
 
                             <Button Grid.Column="1" Content="+" Width="40" Margin="8,0,0,0" Style="{StaticResource PrimaryButton}"
 
@@ -306,7 +306,7 @@
 
                     <TextBlock TextWrapping="Wrap" Foreground="{StaticResource TextPrimaryBrush}" FontSize="12"
 
-                               Text="Process Mode перехватывает весь трафик выбранных процессов. Поддерживаются Shadowsocks (ss://) и AmneziaWG. Требуются права администратора." />
+                               Text="Process Mode перехватывает TCP/UDP выбранных процессов через Redirector. Для Discord добавьте Discord и Update. PM использует отдельный sing-box 1.12 (sniff SNI). Требуются права администратора." />
 
                 </Border>
 

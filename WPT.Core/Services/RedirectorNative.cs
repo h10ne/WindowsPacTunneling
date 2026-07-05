@@ -74,8 +74,8 @@ public static class RedirectorNative
         Dial(DialName.AIO_FILTERUDP, true);
         Dial(DialName.AIO_FILTERDNS, true);
         Dial(DialName.AIO_DNSONLY, false);
-        // Fake DNS IP (198.18.x.x) ломает UDP/WebRTC: TCP Redirector умеет мапить, SOCKS UDP — нет
-        Dial(DialName.AIO_DNSPROX, false);
+        // DNS через SOCKS: домены Discord резолвятся на стороне туннеля. Fake IP может мешать UDP/WebRTC.
+        Dial(DialName.AIO_DNSPROX, true);
         Dial(DialName.AIO_DNSHOST, "8.8.8.8");
         Dial(DialName.AIO_DNSPORT, "53");
         Dial(DialName.AIO_TGTHOST, socksHost);
@@ -157,10 +157,16 @@ public static class RedirectorNative
             AddBypassPath(currentProcessPath);
         }
 
-        var singBox = Path.Combine(AppPaths.BinDirectory, "sing-box.exe");
-        if (File.Exists(singBox))
+        foreach (var singBox in new[]
+                 {
+                     Path.Combine(AppPaths.BinDirectory, "sing-box.exe"),
+                     AppPaths.ProcessModeSingBoxExecutable
+                 })
         {
-            AddBypassPath(singBox);
+            if (File.Exists(singBox))
+            {
+                AddBypassPath(singBox);
+            }
         }
 
         var wireProxy = Path.Combine(AppPaths.BinDirectory, "wireproxy.exe");

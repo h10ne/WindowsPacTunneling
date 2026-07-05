@@ -3,5 +3,6 @@ namespace WPT.Core.Models;
 public enum ProcessModeConnectionType
 {
     Shadowsocks = 0,
-    Amnezia = 1
+    Amnezia = 1,
+    Vless = 2
 }

@@ -10,7 +10,11 @@ public static class SingBoxInstaller
 {
     private const string Repository = "SagerNet/sing-box";
 
+    private const string ProcessModeReleaseTag = "v1.12.12";
+
     public static string ExecutablePath => Path.Combine(AppPaths.BinDirectory, "sing-box.exe");
+
+    public static string ProcessModeExecutablePath => AppPaths.ProcessModeSingBoxExecutable;
 
     public static bool IsInstalled() => File.Exists(ExecutablePath);
 
@@ -25,7 +29,7 @@ public static class SingBoxInstaller
             }
         }
 
-        return TryReadVersionFromExecutable();
+        return TryReadVersionFromExecutable(ExecutablePath);
     }
 
     public static async Task<SingBoxUpdateCheckResult> CheckForUpdateAsync(CancellationToken cancellationToken = default)
@@ -76,6 +80,29 @@ public static class SingBoxInstaller
         await InstallOrUpdateAsync(progress, cancellationToken);
     }
 
+    public static async Task EnsureProcessModeInstalledAsync(IProgress<string>? progress, CancellationToken cancellationToken)
+    {
+        if (IsProcessModeInstalled())
+        {
+            return;
+        }
+
+        var mainVersion = GetInstalledVersion();
+        if (IsProcessModeVersionCompatible(mainVersion) && IsInstalled())
+        {
+            progress?.Report("Копирование sing-box 1.12 для Process Mode...");
+            File.Copy(ExecutablePath, ProcessModeExecutablePath, overwrite: true);
+            File.WriteAllText(AppPaths.ProcessModeSingBoxVersionFile, mainVersion!);
+            return;
+        }
+
+        progress?.Report($"Загрузка sing-box {ProcessModeReleaseTag} для Process Mode...");
+        await InstallReleaseAsync(ProcessModeReleaseTag, ProcessModeExecutablePath, AppPaths.ProcessModeSingBoxVersionFile, progress, cancellationToken);
+    }
+
+    public static bool IsProcessModeInstalled() =>
+        File.Exists(ProcessModeExecutablePath) && IsProcessModeVersionCompatible(GetProcessModeInstalledVersion());
+
     public static async Task InstallOrUpdateAsync(IProgress<string>? progress, CancellationToken cancellationToken)
     {
         progress?.Report("Загрузка sing-box...");
@@ -84,9 +111,24 @@ public static class SingBoxInstaller
 
         using var httpClient = CreateHttpClient();
         var release = await FetchLatestReleaseAsync(httpClient, cancellationToken);
+        await InstallReleaseAsync(release.TagName, ExecutablePath, AppPaths.SingBoxVersionFile, progress, cancellationToken);
+    }
+
+    private static async Task InstallReleaseAsync(
+        string releaseTag,
+        string targetExecutablePath,
+        string versionFilePath,
+        IProgress<string>? progress,
+        CancellationToken cancellationToken)
+    {
+        AppPaths.EnsureRoot();
+        Directory.CreateDirectory(AppPaths.BinDirectory);
+
+        using var httpClient = CreateHttpClient();
+        var release = await FetchReleaseByTagAsync(httpClient, releaseTag, cancellationToken);
         var asset = FindReleaseAsset(release);
         var zipPath = Path.Combine(AppPaths.BinDirectory, asset.Name);
-        var extractDirectory = Path.Combine(AppPaths.BinDirectory, "extract");
+        var extractDirectory = Path.Combine(AppPaths.BinDirectory, $"extract-{Guid.NewGuid():N}");
 
         try
         {
@@ -99,11 +141,6 @@ public static class SingBoxInstaller
             }
 
             progress?.Report("Распаковка sing-box...");
-            if (Directory.Exists(extractDirectory))
-            {
-                Directory.Delete(extractDirectory, recursive: true);
-            }
-
             Directory.CreateDirectory(extractDirectory);
             ZipFile.ExtractToDirectory(zipPath, extractDirectory, overwriteFiles: true);
 
@@ -112,8 +149,8 @@ public static class SingBoxInstaller
                 .FirstOrDefault()
                 ?? throw new InvalidOperationException("В архиве sing-box не найден sing-box.exe.");
 
-            File.Copy(extractedExe, ExecutablePath, overwrite: true);
-            File.WriteAllText(AppPaths.SingBoxVersionFile, release.TagName);
+            File.Copy(extractedExe, targetExecutablePath, overwrite: true);
+            File.WriteAllText(versionFilePath, release.TagName);
         }
         finally
         {
@@ -131,7 +168,21 @@ public static class SingBoxInstaller
 
     public static void StopRunningProcesses()
     {
-        var executable = Path.GetFullPath(ExecutablePath);
+        StopProcessesForExecutable(ExecutablePath);
+        StopProcessesForExecutable(ProcessModeExecutablePath);
+    }
+
+    public static bool HasRunningProcesses() =>
+        HasRunningProcessForExecutable(ExecutablePath) || HasRunningProcessForExecutable(ProcessModeExecutablePath);
+
+    private static void StopProcessesForExecutable(string executablePath)
+    {
+        if (!File.Exists(executablePath))
+        {
+            return;
+        }
+
+        var executable = Path.GetFullPath(executablePath);
 
         foreach (var process in Process.GetProcessesByName("sing-box"))
         {
@@ -153,9 +204,14 @@ public static class SingBoxInstaller
         }
     }
 
-    public static bool HasRunningProcesses()
+    private static bool HasRunningProcessForExecutable(string executablePath)
     {
-        var executable = Path.GetFullPath(ExecutablePath);
+        if (!File.Exists(executablePath))
+        {
+            return false;
+        }
+
+        var executable = Path.GetFullPath(executablePath);
         var processes = Process.GetProcessesByName("sing-box");
 
         try
@@ -185,6 +241,32 @@ public static class SingBoxInstaller
         }
     }
 
+    public static string? GetProcessModeInstalledVersion()
+    {
+        if (File.Exists(AppPaths.ProcessModeSingBoxVersionFile))
+        {
+            var version = File.ReadAllText(AppPaths.ProcessModeSingBoxVersionFile).Trim();
+            if (!string.IsNullOrWhiteSpace(version))
+            {
+                return version;
+            }
+        }
+
+        return TryReadVersionFromExecutable(ProcessModeExecutablePath);
+    }
+
+    private static bool IsProcessModeVersionCompatible(string? version)
+    {
+        if (string.IsNullOrWhiteSpace(version))
+        {
+            return false;
+        }
+
+        var normalized = NormalizeVersion(version);
+        var coreVersion = normalized.Split('-', '+')[0];
+        return Version.TryParse(coreVersion, out var parsed) && parsed.Major == 1 && parsed.Minor == 12;
+    }
+
     private static HttpClient CreateHttpClient()
     {
         var httpClient = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
@@ -201,6 +283,20 @@ public static class SingBoxInstaller
         if (release == null || string.IsNullOrWhiteSpace(release.TagName))
         {
             throw new InvalidOperationException("Не удалось получить информацию о последнем релизе sing-box.");
+        }
+
+        return release;
+    }
+
+    private static async Task<GitHubRelease> FetchReleaseByTagAsync(HttpClient httpClient, string tag, CancellationToken cancellationToken)
+    {
+        var release = await httpClient.GetFromJsonAsync<GitHubRelease>(
+            $"https://api.github.com/repos/{Repository}/releases/tags/{tag}",
+            cancellationToken);
+
+        if (release == null || string.IsNullOrWhiteSpace(release.TagName))
+        {
+            throw new InvalidOperationException($"Не удалось получить релиз sing-box {tag}.");
         }
 
         return release;
@@ -227,9 +323,9 @@ public static class SingBoxInstaller
         return asset;
     }
 
-    private static string? TryReadVersionFromExecutable()
+    private static string? TryReadVersionFromExecutable(string executablePath)
     {
-        if (!IsInstalled())
+        if (!File.Exists(executablePath))
         {
             return null;
         }
@@ -238,7 +334,7 @@ public static class SingBoxInstaller
         {
             using var process = Process.Start(new ProcessStartInfo
             {
-                FileName = ExecutablePath,
+                FileName = executablePath,
                 Arguments = "version",
                 UseShellExecute = false,
                 RedirectStandardOutput = true,

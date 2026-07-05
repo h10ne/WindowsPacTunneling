@@ -35,6 +35,7 @@ public sealed class MainViewModel : ViewModelBase
     private bool _isProcessModeHealthy;
     private bool _isProcessModeUnreachable;
     private bool _isProcessModeUdpSupported = true;
+    private bool _isDiscordReachable = true;
     private bool _isProcessModeHealthChecking;
     private int? _processModePingMs;
 
@@ -118,6 +119,11 @@ public sealed class MainViewModel : ViewModelBase
         ProcessModeApplications = [];
         ProcessModeConnectionTypes =
         [
+            new ProcessModeConnectionTypeOption
+            {
+                Value = ProcessModeConnectionType.Vless,
+                DisplayName = "VLESS Reality (XUDP)"
+            },
             new ProcessModeConnectionTypeOption
             {
                 Value = ProcessModeConnectionType.Shadowsocks,
@@ -377,14 +383,31 @@ public sealed class MainViewModel : ViewModelBase
             if (SetProperty(ref _processModeConnectionType, value))
             {
                 OnPropertyChanged(nameof(IsProcessModeSsSelected));
+                OnPropertyChanged(nameof(IsProcessModeVlessSelected));
                 OnPropertyChanged(nameof(IsProcessModeAmneziaSelected));
+                OnPropertyChanged(nameof(IsProcessModeLinkSelected));
+                OnPropertyChanged(nameof(ProcessModeLinkCaption));
+                OnPropertyChanged(nameof(ProcessModeLinkHint));
             }
         }
     }
 
     public bool IsProcessModeSsSelected => ProcessModeConnectionType == ProcessModeConnectionType.Shadowsocks;
 
+    public bool IsProcessModeVlessSelected => ProcessModeConnectionType == ProcessModeConnectionType.Vless;
+
+    public bool IsProcessModeLinkSelected =>
+        ProcessModeConnectionType is ProcessModeConnectionType.Shadowsocks or ProcessModeConnectionType.Vless;
+
     public bool IsProcessModeAmneziaSelected => ProcessModeConnectionType == ProcessModeConnectionType.Amnezia;
+
+    public string ProcessModeLinkCaption => IsProcessModeVlessSelected
+        ? "Ссылка VLESS Reality"
+        : "Ссылка Shadowsocks";
+
+    public string ProcessModeLinkHint => IsProcessModeVlessSelected
+        ? "vless://uuid@server:443?type=tcp&security=reality&flow=xtls-rprx-vision&sni=...&fp=chrome&pbk=...&sid=..."
+        : "ss://method:password@server:port#remark";
 
     public string ProcessModePort
     {
@@ -441,6 +464,7 @@ public sealed class MainViewModel : ViewModelBase
 
             OnPropertyChanged(nameof(IsTunnelingPage));
             OnPropertyChanged(nameof(IsProxyPage));
+            OnPropertyChanged(nameof(IsProcessModePage));
             OnPropertyChanged(nameof(IsBypassPage));
             OnPropertyChanged(nameof(IsSettingsPage));
         }
@@ -458,16 +482,22 @@ public sealed class MainViewModel : ViewModelBase
         set { if (value) SelectedSection = 1; }
     }
 
-    public bool IsBypassPage
+    public bool IsProcessModePage
     {
         get => SelectedSection == 2;
         set { if (value) SelectedSection = 2; }
     }
 
-    public bool IsSettingsPage
+    public bool IsBypassPage
     {
         get => SelectedSection == 3;
         set { if (value) SelectedSection = 3; }
+    }
+
+    public bool IsSettingsPage
+    {
+        get => SelectedSection == 4;
+        set { if (value) SelectedSection = 4; }
     }
 
     public int SettingsTabIndex
@@ -1572,7 +1602,7 @@ public sealed class MainViewModel : ViewModelBase
             }));
             await _processModeService.TryRestoreAsync(
                 silent ? _settings.ProcessModeConnectionType : ProcessModeConnectionType,
-                TryGetProcessModeShadowsocksProfile(silent),
+                TryGetProcessModeProxyProfile(silent),
                 TryGetProcessModeAmneziaConfig(silent),
                 localPort,
                 applications,
@@ -1676,7 +1706,7 @@ public sealed class MainViewModel : ViewModelBase
             }));
             await _processModeService.StartAsync(
                 silent ? _settings.ProcessModeConnectionType : ProcessModeConnectionType,
-                TryGetProcessModeShadowsocksProfile(silent),
+                TryGetProcessModeProxyProfile(silent),
                 TryGetProcessModeAmneziaConfig(silent),
                 localPort,
                 applications,
@@ -1758,9 +1788,12 @@ public sealed class MainViewModel : ViewModelBase
     {
         var isRunning = _processModeService.IsRunning;
         var address = _processModeService.LocalProxyAddress;
-        var tunnelLabel = _processModeService.ActiveConnectionType == ProcessModeConnectionType.Amnezia
-            ? "AmneziaWG"
-            : "ss";
+        var tunnelLabel = _processModeService.ActiveConnectionType switch
+        {
+            ProcessModeConnectionType.Amnezia => "AmneziaWG",
+            ProcessModeConnectionType.Vless => "VLESS+XUDP",
+            _ => "ss"
+        };
 
         if (!isRunning)
         {
@@ -1778,6 +1811,12 @@ public sealed class MainViewModel : ViewModelBase
             FooterProcessModeStatus = $"PM: SOCKS · {_processModePingMs} мс";
             ProcessModeStatus =
                 $"Process Mode: SOCKS ok · {address} · {tunnelLabel} · Redirector · {ProcessModeApplications.Count} прилож. · {_processModePingMs} мс";
+        }
+        else if (_isProcessModeUnreachable && _processModePingMs != null && !_isDiscordReachable)
+        {
+            FooterProcessModeStatus = "PM: Discord недоступен";
+            ProcessModeStatus =
+                $"Process Mode: Discord недоступен через туннель · {address} · {tunnelLabel} · Redirector · {ProcessModeApplications.Count} прилож.";
         }
         else if (_isProcessModeUnreachable && _processModePingMs != null && !_isProcessModeUdpSupported)
         {
@@ -2669,7 +2708,7 @@ public sealed class MainViewModel : ViewModelBase
         {
             if (!cancellationToken.IsCancellationRequested)
             {
-                ApplyProcessModeHealthResult(new ProxyHealthResult(false, null));
+                ApplyProcessModeHealthResult(new ProxyHealthResult(false, null, false, false));
             }
         }
         finally
@@ -2688,6 +2727,7 @@ public sealed class MainViewModel : ViewModelBase
         _isProcessModeHealthy = result.IsReachable;
         _isProcessModeUnreachable = !result.IsReachable;
         _isProcessModeUdpSupported = result.UdpSupported;
+        _isDiscordReachable = result.DiscordReachable;
         _processModePingMs = result.LatencyMs;
 
         if (_processModeService.IsRunning)
@@ -2712,6 +2752,7 @@ public sealed class MainViewModel : ViewModelBase
         _isProcessModeHealthy = false;
         _isProcessModeUnreachable = false;
         _isProcessModeUdpSupported = true;
+        _isDiscordReachable = true;
         _processModePingMs = null;
         OnPropertyChanged(nameof(IsProcessModeHealthy));
         OnPropertyChanged(nameof(IsProcessModeUnreachable));
@@ -2987,7 +3028,7 @@ public sealed class MainViewModel : ViewModelBase
 
     private void OpenSettingsForUpdate()
     {
-        SelectedSection = 3;
+        SelectedSection = 4;
         SettingsTabIndex = 1;
     }
 
@@ -3569,48 +3610,60 @@ public sealed class MainViewModel : ViewModelBase
     private bool HasProcessModeConfig() => ProcessModeConnectionType switch
     {
         ProcessModeConnectionType.Amnezia => HasProcessModeAmneziaConfig,
-        _ => !string.IsNullOrWhiteSpace(ProcessModeLink)
+        ProcessModeConnectionType.Vless or ProcessModeConnectionType.Shadowsocks => !string.IsNullOrWhiteSpace(ProcessModeLink),
+        _ => false
     };
 
     private bool HasProcessModeConfigFromSettings() => _settings.ProcessModeConnectionType switch
     {
         ProcessModeConnectionType.Amnezia => AmneziaConfigStorage.TryReadStored(out _, out _, out _),
-        _ => !string.IsNullOrWhiteSpace(_settings.ProcessModeLink)
+        ProcessModeConnectionType.Vless or ProcessModeConnectionType.Shadowsocks => !string.IsNullOrWhiteSpace(_settings.ProcessModeLink),
+        _ => false
     };
 
     private bool TryValidateProcessModeConnectionFromSettings(out string error)
     {
         error = string.Empty;
 
-        return _settings.ProcessModeConnectionType switch
+        if (_settings.ProcessModeConnectionType == ProcessModeConnectionType.Amnezia)
         {
-            ProcessModeConnectionType.Amnezia => AmneziaConfigStorage.TryReadStored(out _, out _, out error),
-            _ => ProxyLinkParser.TryParse(_settings.ProcessModeLink, out _, out error)
-        };
+            return AmneziaConfigStorage.TryReadStored(out _, out _, out error);
+        }
+
+        return ProcessModeConnectionValidator.TryValidate(
+            _settings.ProcessModeConnectionType,
+            _settings.ProcessModeLink,
+            out _,
+            out error);
     }
 
     private bool TryValidateProcessModeConnection(out string error)
     {
         error = string.Empty;
 
-        return ProcessModeConnectionType switch
+        if (ProcessModeConnectionType == ProcessModeConnectionType.Amnezia)
         {
-            ProcessModeConnectionType.Amnezia => AmneziaConfigStorage.TryReadStored(out _, out _, out error),
-            _ => ProxyLinkParser.TryParse(ProcessModeLink, out _, out error)
-        };
+            return AmneziaConfigStorage.TryReadStored(out _, out _, out error);
+        }
+
+        return ProcessModeConnectionValidator.TryValidate(
+            ProcessModeConnectionType,
+            ProcessModeLink,
+            out _,
+            out error);
     }
 
-    private ProxyProfile? TryGetProcessModeShadowsocksProfile(bool fromSettings = false)
+    private ProxyProfile? TryGetProcessModeProxyProfile(bool fromSettings = false)
     {
         var connectionType = fromSettings ? _settings.ProcessModeConnectionType : ProcessModeConnectionType;
         var link = fromSettings ? _settings.ProcessModeLink : ProcessModeLink;
 
-        if (connectionType != ProcessModeConnectionType.Shadowsocks)
+        if (connectionType is not (ProcessModeConnectionType.Shadowsocks or ProcessModeConnectionType.Vless))
         {
             return null;
         }
 
-        return ProxyLinkParser.TryParse(link, out var profile, out _)
+        return ProcessModeConnectionValidator.TryValidate(connectionType, link, out var profile, out _)
             ? profile
             : null;
     }
