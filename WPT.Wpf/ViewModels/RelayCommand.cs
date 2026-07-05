@@ -1,4 +1,5 @@
 using System.Windows.Input;
+using System.Windows.Threading;
 
 namespace WPT.Wpf.ViewModels;
 
@@ -30,9 +31,14 @@ public sealed class RelayCommand : ICommand
 
     public void Execute(object? parameter) => _execute(parameter);
 
-    public void RaiseCanExecuteChanged() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+    public void RaiseCanExecuteChanged() => RunOnUiThread(RaiseCanExecuteChangedCore);
 
-    public static void RaiseAllCanExecuteChanged()
+    public static void RaiseAllCanExecuteChanged() => RunOnUiThread(RaiseAllCanExecuteChangedCore);
+
+    private void RaiseCanExecuteChangedCore() =>
+        CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+
+    private static void RaiseAllCanExecuteChangedCore()
     {
         lock (Commands)
         {
@@ -44,9 +50,21 @@ public sealed class RelayCommand : ICommand
                     continue;
                 }
 
-                command.RaiseCanExecuteChanged();
+                command.RaiseCanExecuteChangedCore();
             }
         }
+    }
+
+    private static void RunOnUiThread(Action action)
+    {
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (dispatcher == null || dispatcher.CheckAccess())
+        {
+            action();
+            return;
+        }
+
+        dispatcher.BeginInvoke(action, DispatcherPriority.DataBind);
     }
 
 }

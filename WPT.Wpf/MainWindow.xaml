@@ -22,6 +22,8 @@
 
         <conv:SectionToVisibilityConverter x:Key="SectionVis" />
 
+        <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
+
     </Window.Resources>
 
     <Grid>
@@ -64,17 +66,25 @@
 
                     <RadioButton Content="Тунелирование" Style="{StaticResource NavButton}" GroupName="Nav"
 
+                                 Visibility="{Binding IsTunnelingTabVisible, Converter={StaticResource BoolToVis}}"
+
                                  IsChecked="{Binding IsTunnelingPage, Mode=TwoWay}" />
 
                     <RadioButton Content="Прокси" Style="{StaticResource NavButton}" GroupName="Nav"
+
+                                 Visibility="{Binding IsProxyTabVisible, Converter={StaticResource BoolToVis}}"
 
                                  IsChecked="{Binding IsProxyPage, Mode=TwoWay}" />
 
                     <RadioButton Content="Process Mode" Style="{StaticResource NavButton}" GroupName="Nav"
 
+                                 Visibility="{Binding IsProcessModeTabVisible, Converter={StaticResource BoolToVis}}"
+
                                  IsChecked="{Binding IsProcessModePage, Mode=TwoWay}" />
 
                     <RadioButton Content="Zapret + TG" Style="{StaticResource NavButton}" GroupName="Nav"
+
+                                 Visibility="{Binding IsBypassTabVisible, Converter={StaticResource BoolToVis}}"
 
                                  IsChecked="{Binding IsBypassPage, Mode=TwoWay}" />
 

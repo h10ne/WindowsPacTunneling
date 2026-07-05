@@ -750,15 +750,12 @@
                             <Setter TargetName="Bd" Property="Background" Value="{StaticResource CardBrush}" />
                             <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
                         </Trigger>
-                        <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Bd" Property="Background" Value="#18FFFFFF" />
-                        </Trigger>
                         <MultiTrigger>
                             <MultiTrigger.Conditions>
-                                <Condition Property="IsSelected" Value="True" />
+                                <Condition Property="IsSelected" Value="False" />
                                 <Condition Property="IsMouseOver" Value="True" />
                             </MultiTrigger.Conditions>
-                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource ElevatedBrush}" />
+                            <Setter TargetName="Bd" Property="Background" Value="#18FFFFFF" />
                         </MultiTrigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>

@@ -17,7 +17,79 @@
         </StackPanel.Resources>
 
         <StackPanel Orientation="Horizontal" Margin="0,0,0,6"
-                    Visibility="{Binding IsProcessModeUiVisible, Converter={StaticResource BoolToVis}}">
+                    Visibility="{Binding IsTunnelingTabVisible, Converter={StaticResource BoolToVis}}">
+
+            <Ellipse Width="8" Height="8" VerticalAlignment="Center">
+
+                <Ellipse.Style>
+
+                    <Style TargetType="Ellipse">
+
+                        <Setter Property="Fill" Value="#FF6B6B6E" />
+
+                        <Style.Triggers>
+
+                            <DataTrigger Binding="{Binding IsPacActive}" Value="True">
+
+                                <Setter Property="Fill" Value="{StaticResource SuccessBrush}" />
+
+                            </DataTrigger>
+
+                        </Style.Triggers>
+
+                    </Style>
+
+                </Ellipse.Style>
+
+            </Ellipse>
+
+            <TextBlock Text="{Binding FooterRight}" VerticalAlignment="Center" Style="{StaticResource CaptionText}"
+
+                       Margin="8,0,0,0" TextTrimming="CharacterEllipsis" />
+
+        </StackPanel>
+
+        <StackPanel Orientation="Horizontal" Margin="0,0,0,6"
+                    Visibility="{Binding IsProxyTabVisible, Converter={StaticResource BoolToVis}}">
+
+            <Ellipse Width="8" Height="8" VerticalAlignment="Center">
+
+                <Ellipse.Style>
+
+                    <Style TargetType="Ellipse">
+
+                        <Setter Property="Fill" Value="#FF6B6B6E" />
+
+                        <Style.Triggers>
+
+                            <DataTrigger Binding="{Binding IsProxyHealthy}" Value="True">
+
+                                <Setter Property="Fill" Value="{StaticResource SuccessBrush}" />
+
+                            </DataTrigger>
+
+                            <DataTrigger Binding="{Binding IsProxyUnreachable}" Value="True">
+
+                                <Setter Property="Fill" Value="{StaticResource DangerBrush}" />
+
+                            </DataTrigger>
+
+                        </Style.Triggers>
+
+                    </Style>
+
+                </Ellipse.Style>
+
+            </Ellipse>
+
+            <TextBlock Text="{Binding FooterProxyStatus}" VerticalAlignment="Center" Style="{StaticResource CaptionText}"
+
+                       Margin="8,0,0,0" TextTrimming="CharacterEllipsis" />
+
+        </StackPanel>
+
+        <StackPanel Orientation="Horizontal" Margin="0,0,0,6"
+                    Visibility="{Binding IsProcessModeTabVisible, Converter={StaticResource BoolToVis}}">
 
             <Ellipse Width="8" Height="8" VerticalAlignment="Center">
 
@@ -63,45 +135,8 @@
 
         </StackPanel>
 
-        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-
-            <Ellipse Width="8" Height="8" VerticalAlignment="Center">
-
-                <Ellipse.Style>
-
-                    <Style TargetType="Ellipse">
-
-                        <Setter Property="Fill" Value="#FF6B6B6E" />
-
-                        <Style.Triggers>
-
-                            <DataTrigger Binding="{Binding IsProxyHealthy}" Value="True">
-
-                                <Setter Property="Fill" Value="{StaticResource SuccessBrush}" />
-
-                            </DataTrigger>
-
-                            <DataTrigger Binding="{Binding IsProxyUnreachable}" Value="True">
-
-                                <Setter Property="Fill" Value="{StaticResource DangerBrush}" />
-
-                            </DataTrigger>
-
-                        </Style.Triggers>
-
-                    </Style>
-
-                </Ellipse.Style>
-
-            </Ellipse>
-
-            <TextBlock Text="{Binding FooterProxyStatus}" VerticalAlignment="Center" Style="{StaticResource CaptionText}"
-
-                       Margin="8,0,0,0" TextTrimming="CharacterEllipsis" />
-
-        </StackPanel>
-
-        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+        <StackPanel Orientation="Horizontal" Margin="0,0,0,6"
+                    Visibility="{Binding IsBypassTabVisible, Converter={StaticResource BoolToVis}}">
 
             <Ellipse Width="8" Height="8" VerticalAlignment="Center">
 
@@ -128,38 +163,6 @@
             </Ellipse>
 
             <TextBlock Text="{Binding FooterBypassStatus}" VerticalAlignment="Center" Style="{StaticResource CaptionText}"
-
-                       Margin="8,0,0,0" TextTrimming="CharacterEllipsis" />
-
-        </StackPanel>
-
-        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-
-            <Ellipse Width="8" Height="8" VerticalAlignment="Center">
-
-                <Ellipse.Style>
-
-                    <Style TargetType="Ellipse">
-
-                        <Setter Property="Fill" Value="#FF6B6B6E" />
-
-                        <Style.Triggers>
-
-                            <DataTrigger Binding="{Binding IsPacActive}" Value="True">
-
-                                <Setter Property="Fill" Value="{StaticResource SuccessBrush}" />
-
-                            </DataTrigger>
-
-                        </Style.Triggers>
-
-                    </Style>
-
-                </Ellipse.Style>
-
-            </Ellipse>
-
-            <TextBlock Text="{Binding FooterRight}" VerticalAlignment="Center" Style="{StaticResource CaptionText}"
 
                        Margin="8,0,0,0" TextTrimming="CharacterEllipsis" />
 

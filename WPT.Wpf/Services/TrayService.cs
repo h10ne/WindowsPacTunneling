@@ -16,6 +16,10 @@ public sealed class TrayService : IDisposable
     private readonly ToolStripMenuItem _disableItem;
     private readonly ToolStripMenuItem _proxyStartItem;
     private readonly ToolStripMenuItem _proxyStopItem;
+    private readonly ToolStripMenuItem? _processModeStartItem;
+    private readonly ToolStripMenuItem? _processModeStopItem;
+    private readonly ToolStripMenuItem _zapretStartItem;
+    private readonly ToolStripMenuItem _zapretStopItem;
     private bool _allowClose;
 
     public TrayService(Window window, MainViewModel viewModel)
@@ -54,7 +58,7 @@ public sealed class TrayService : IDisposable
         var localProxyMenu = new ToolStripMenuItem("Локальный прокси");
         _proxyStartItem = new ToolStripMenuItem("Запустить", null, (_, _) =>
         {
-            if (_viewModel.IsProxyRunning || _viewModel.IsBusy)
+            if (_viewModel.IsProxyRunning || _viewModel.IsBusy || !_viewModel.IsTrayProxyMenuEnabled)
             {
                 return;
             }
@@ -64,7 +68,7 @@ public sealed class TrayService : IDisposable
         });
         _proxyStopItem = new ToolStripMenuItem("Остановить", null, (_, _) =>
         {
-            if (!_viewModel.IsProxyRunning || _viewModel.IsBusy)
+            if (!_viewModel.IsProxyRunning || _viewModel.IsBusy || !_viewModel.IsTrayProxyMenuEnabled)
             {
                 return;
             }
@@ -75,6 +79,69 @@ public sealed class TrayService : IDisposable
         localProxyMenu.DropDownItems.Add(_proxyStartItem);
         localProxyMenu.DropDownItems.Add(_proxyStopItem);
         menu.Items.Add(localProxyMenu);
+
+        if (_viewModel.IsProcessModeUiVisible)
+        {
+            var processModeMenu = new ToolStripMenuItem("Process Mode");
+            _processModeStartItem = new ToolStripMenuItem("Запустить", null, (_, _) =>
+            {
+                if (_viewModel.IsProcessModeRunning
+                    || _viewModel.IsProcessModeOperating
+                    || !_viewModel.IsTrayProcessModeMenuEnabled)
+                {
+                    return;
+                }
+
+                _viewModel.ToggleProcessModeCommand.Execute(null);
+                UpdateMenu();
+            });
+            _processModeStopItem = new ToolStripMenuItem("Остановить", null, (_, _) =>
+            {
+                if (!_viewModel.IsProcessModeRunning
+                    || _viewModel.IsProcessModeOperating
+                    || !_viewModel.IsTrayProcessModeMenuEnabled)
+                {
+                    return;
+                }
+
+                _viewModel.ToggleProcessModeCommand.Execute(null);
+                UpdateMenu();
+            });
+            processModeMenu.DropDownItems.Add(_processModeStartItem);
+            processModeMenu.DropDownItems.Add(_processModeStopItem);
+            menu.Items.Add(processModeMenu);
+        }
+
+        var zapretMenu = new ToolStripMenuItem("Zapret");
+        _zapretStartItem = new ToolStripMenuItem("Запустить", null, (_, _) =>
+        {
+            if (_viewModel.IsBypassRunning
+                || _viewModel.IsBusy
+                || _viewModel.IsBypassProbingStrategy
+                || !_viewModel.IsTrayZapretMenuEnabled)
+            {
+                return;
+            }
+
+            _viewModel.ToggleBypassCommand.Execute(null);
+            UpdateMenu();
+        });
+        _zapretStopItem = new ToolStripMenuItem("Остановить", null, (_, _) =>
+        {
+            if (!_viewModel.IsBypassRunning
+                || _viewModel.IsBusy
+                || _viewModel.IsBypassProbingStrategy
+                || !_viewModel.IsTrayZapretMenuEnabled)
+            {
+                return;
+            }
+
+            _viewModel.ToggleBypassCommand.Execute(null);
+            UpdateMenu();
+        });
+        zapretMenu.DropDownItems.Add(_zapretStartItem);
+        zapretMenu.DropDownItems.Add(_zapretStopItem);
+        menu.Items.Add(zapretMenu);
 
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Выход", null, (_, _) => ExitApplication());
@@ -87,19 +154,72 @@ public sealed class TrayService : IDisposable
         {
             if (e.PropertyName is nameof(MainViewModel.IsPacActive)
                 or nameof(MainViewModel.IsProxyRunning)
-                or nameof(MainViewModel.IsBusy))
+                or nameof(MainViewModel.IsBusy)
+                or nameof(MainViewModel.IsTrayProxyMenuEnabled)
+                or nameof(MainViewModel.IsProcessModeRunning)
+                or nameof(MainViewModel.IsProcessModeOperating)
+                or nameof(MainViewModel.IsTrayProcessModeMenuEnabled)
+                or nameof(MainViewModel.IsBypassRunning)
+                or nameof(MainViewModel.IsBypassProbingStrategy)
+                or nameof(MainViewModel.IsTrayZapretMenuEnabled))
             {
-                UpdateMenu();
+                ScheduleUpdateMenu();
             }
         };
+    }
+
+    private void ScheduleUpdateMenu()
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher == null || dispatcher.CheckAccess())
+        {
+            UpdateMenu();
+            return;
+        }
+
+        dispatcher.BeginInvoke(UpdateMenu);
     }
 
     public void UpdateMenu()
     {
         _enableItem.Enabled = !_viewModel.IsPacActive;
         _disableItem.Enabled = _viewModel.IsPacActive;
-        _proxyStartItem.Enabled = !_viewModel.IsProxyRunning && !_viewModel.IsBusy;
-        _proxyStopItem.Enabled = _viewModel.IsProxyRunning && !_viewModel.IsBusy;
+
+        if (_viewModel.IsTrayProxyMenuEnabled)
+        {
+            _proxyStartItem.Enabled = !_viewModel.IsProxyRunning && !_viewModel.IsBusy;
+            _proxyStopItem.Enabled = _viewModel.IsProxyRunning && !_viewModel.IsBusy;
+        }
+        else
+        {
+            _proxyStartItem.Enabled = false;
+            _proxyStopItem.Enabled = false;
+        }
+
+        if (_processModeStartItem != null && _processModeStopItem != null)
+        {
+            if (_viewModel.IsTrayProcessModeMenuEnabled)
+            {
+                _processModeStartItem.Enabled = !_viewModel.IsProcessModeRunning && !_viewModel.IsProcessModeOperating;
+                _processModeStopItem.Enabled = _viewModel.IsProcessModeRunning && !_viewModel.IsProcessModeOperating;
+            }
+            else
+            {
+                _processModeStartItem.Enabled = false;
+                _processModeStopItem.Enabled = false;
+            }
+        }
+
+        if (_viewModel.IsTrayZapretMenuEnabled && !_viewModel.IsBypassProbingStrategy)
+        {
+            _zapretStartItem.Enabled = !_viewModel.IsBypassRunning && !_viewModel.IsBusy;
+            _zapretStopItem.Enabled = _viewModel.IsBypassRunning && !_viewModel.IsBusy;
+        }
+        else
+        {
+            _zapretStartItem.Enabled = false;
+            _zapretStopItem.Enabled = false;
+        }
     }
 
     public void ExitApplication()

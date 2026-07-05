@@ -96,6 +96,14 @@ public sealed class MainViewModel : ViewModelBase
     private readonly string _appVersionLabel = AppVersion.CurrentLabel;
     private bool _notifyOnMinimizeToTray;
     private bool _updateListsOnStartup;
+    private bool _showTunnelingTab = true;
+    private bool _showProxyTab = true;
+    private bool _showProcessModeTab = true;
+    private bool _showBypassTab = true;
+    private bool _appliedShowTunnelingTab = true;
+    private bool _appliedShowProxyTab = true;
+    private bool _appliedShowProcessModeTab = true;
+    private bool _appliedShowBypassTab = true;
     private bool _routeAllTrafficThroughProxy;
     private bool _showRussiaInsideRestrictionHint;
     private bool _bypassEnableZapret = true;
@@ -352,7 +360,13 @@ public sealed class MainViewModel : ViewModelBase
     public string ProcessModeLink
     {
         get => _processModeLink;
-        set => SetProperty(ref _processModeLink, value);
+        set
+        {
+            if (SetProperty(ref _processModeLink, value))
+            {
+                NotifyTrayMenuChanged();
+            }
+        }
     }
 
     public string ProcessModeAmneziaEndpoint
@@ -587,15 +601,25 @@ public sealed class MainViewModel : ViewModelBase
         get => _isBusy;
         set
         {
-            if (SetProperty(ref _isBusy, value))
+            if (_isBusy == value)
             {
-                OnPropertyChanged(nameof(IsProxyEditingEnabled));
-                OnPropertyChanged(nameof(IsProcessModeEditingEnabled));
-                OnPropertyChanged(nameof(IsBypassEditingEnabled));
-                OnPropertyChanged(nameof(IsTgWsProxyPortEditingEnabled));
-                NotifyBypassCommandState();
-                RelayCommand.RaiseAllCanExecuteChanged();
+                return;
             }
+
+            void Apply()
+            {
+                if (SetProperty(ref _isBusy, value))
+                {
+                    OnPropertyChanged(nameof(IsProxyEditingEnabled));
+                    OnPropertyChanged(nameof(IsProcessModeEditingEnabled));
+                    OnPropertyChanged(nameof(IsBypassEditingEnabled));
+                    OnPropertyChanged(nameof(IsTgWsProxyPortEditingEnabled));
+                    NotifyBypassCommandState();
+                    RelayCommand.RaiseAllCanExecuteChanged();
+                }
+            }
+
+            RunOnUiThread(Apply);
         }
     }
 
@@ -790,6 +814,16 @@ public sealed class MainViewModel : ViewModelBase
 
     public bool HasZapretStrategy => !string.IsNullOrWhiteSpace(_settings.SavedZapretStrategy);
 
+    public bool HasActiveProxyConfig => CanRestoreLocalProxy();
+
+    public bool HasActiveProcessModeConfig => HasProcessModeConfig();
+
+    public bool IsTrayProxyMenuEnabled => HasActiveProxyConfig;
+
+    public bool IsTrayProcessModeMenuEnabled => AdminHelper.IsRunningAsAdmin() && HasActiveProcessModeConfig;
+
+    public bool IsTrayZapretMenuEnabled => AdminHelper.IsRunningAsAdmin() && HasZapretStrategy;
+
     public string TelegramProxyLink
     {
         get => _telegramProxyLink;
@@ -841,9 +875,11 @@ public sealed class MainViewModel : ViewModelBase
             if (SetProperty(ref _runAsAdministrator, value) && !value)
             {
                 StartBypassWithApp = false;
+                StartProcessModeWithApp = false;
             }
 
             OnPropertyChanged(nameof(IsStartBypassWithAppEnabled));
+            OnPropertyChanged(nameof(IsStartProcessModeWithAppEnabled));
         }
     }
 
@@ -854,6 +890,8 @@ public sealed class MainViewModel : ViewModelBase
     }
 
     public bool IsStartBypassWithAppEnabled => RunAsAdministrator;
+
+    public bool IsStartProcessModeWithAppEnabled => RunAsAdministrator;
 
     public bool StartMinimizedToTray
     {
@@ -872,6 +910,38 @@ public sealed class MainViewModel : ViewModelBase
         get => _updateListsOnStartup;
         set => SetProperty(ref _updateListsOnStartup, value);
     }
+
+    public bool ShowTunnelingTab
+    {
+        get => _showTunnelingTab;
+        set => SetProperty(ref _showTunnelingTab, value);
+    }
+
+    public bool ShowProxyTab
+    {
+        get => _showProxyTab;
+        set => SetProperty(ref _showProxyTab, value);
+    }
+
+    public bool ShowProcessModeTab
+    {
+        get => _showProcessModeTab;
+        set => SetProperty(ref _showProcessModeTab, value);
+    }
+
+    public bool ShowBypassTab
+    {
+        get => _showBypassTab;
+        set => SetProperty(ref _showBypassTab, value);
+    }
+
+    public bool IsTunnelingTabVisible => _appliedShowTunnelingTab;
+
+    public bool IsProxyTabVisible => _appliedShowProxyTab;
+
+    public bool IsProcessModeTabVisible => AppBranding.IsProcessModeUiVisible && _appliedShowProcessModeTab;
+
+    public bool IsBypassTabVisible => _appliedShowBypassTab;
 
     public bool IsRestartAsAdminEnabled => !AdminHelper.IsRunningAsAdmin();
 
@@ -1351,11 +1421,30 @@ public sealed class MainViewModel : ViewModelBase
         StartWithWindows = _settings.StartWithWindows;
         RunAsAdministrator = _settings.RunAsAdministrator;
         StartProxyWithApp = _settings.StartProxyWithApp;
-        StartProcessModeWithApp = AppBranding.IsProcessModeUiVisible && _settings.StartProcessModeWithApp;
+        StartProcessModeWithApp = AppBranding.IsProcessModeUiVisible
+            && _settings.RunAsAdministrator
+            && _settings.StartProcessModeWithApp;
         StartBypassWithApp = _settings.RunAsAdministrator && _settings.StartBypassWithApp;
         StartMinimizedToTray = _settings.StartMinimizedToTray;
         NotifyOnMinimizeToTray = _settings.NotifyOnMinimizeToTray;
         UpdateListsOnStartup = _settings.UpdateListsOnStartup;
+        _showTunnelingTab = _settings.ShowTunnelingTab;
+        _showProxyTab = _settings.ShowProxyTab;
+        _showProcessModeTab = _settings.ShowProcessModeTab;
+        _showBypassTab = _settings.ShowBypassTab;
+        _appliedShowTunnelingTab = _settings.ShowTunnelingTab;
+        _appliedShowProxyTab = _settings.ShowProxyTab;
+        _appliedShowProcessModeTab = _settings.ShowProcessModeTab;
+        _appliedShowBypassTab = _settings.ShowBypassTab;
+        OnPropertyChanged(nameof(ShowTunnelingTab));
+        OnPropertyChanged(nameof(ShowProxyTab));
+        OnPropertyChanged(nameof(ShowProcessModeTab));
+        OnPropertyChanged(nameof(ShowBypassTab));
+        OnPropertyChanged(nameof(IsTunnelingTabVisible));
+        OnPropertyChanged(nameof(IsProxyTabVisible));
+        OnPropertyChanged(nameof(IsProcessModeTabVisible));
+        OnPropertyChanged(nameof(IsBypassTabVisible));
+        EnsureSelectedSectionVisible();
         RouteAllTrafficThroughProxy = _settings.RouteAllTrafficThroughProxy;
         LoadSavedProxyConfigs();
         if (SelectedSavedProxyConfig == null)
@@ -1907,6 +1996,7 @@ public sealed class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsProcessModeHealthy));
         OnPropertyChanged(nameof(IsProcessModeUnreachable));
         RelayCommand.RaiseAllCanExecuteChanged();
+        NotifyTrayMenuChanged();
     }
 
     private static bool ContainsIgnoreCase(IEnumerable<string> items, string value) =>
@@ -2168,6 +2258,7 @@ public sealed class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsProxyEditingEnabled));
         OnPropertyChanged(nameof(ProxyToggleLabel));
         RelayCommand.RaiseAllCanExecuteChanged();
+        NotifyTrayMenuChanged();
     }
 
     private void LoadSavedProxyConfigs()
@@ -2230,6 +2321,7 @@ public sealed class MainViewModel : ViewModelBase
         }
 
         _isSyncingProcessModeConfig = false;
+        NotifyTrayMenuChanged();
     }
 
     private void ApplySelectedProcessModeProxyConfig(SavedProxyConfigItem config, bool updateSelection = true)
@@ -2245,6 +2337,7 @@ public sealed class MainViewModel : ViewModelBase
         }
 
         _isSyncingProcessModeConfig = false;
+        NotifyTrayMenuChanged();
     }
 
     private void ApplySelectedProxyConfig(SavedProxyConfigItem config, bool updateSelection = true)
@@ -2275,6 +2368,7 @@ public sealed class MainViewModel : ViewModelBase
         }
 
         _isSyncingProxyConfig = false;
+        NotifyTrayMenuChanged();
     }
 
     private void SaveProxyConfig()
@@ -2913,7 +3007,7 @@ public sealed class MainViewModel : ViewModelBase
         {
             if (reEnableUi)
             {
-                IsBusy = false;
+                await RunOnUiThreadAsync(() => IsBusy = false).ConfigureAwait(false);
             }
         }
     }
@@ -3123,6 +3217,7 @@ public sealed class MainViewModel : ViewModelBase
         try
         {
             UpdateAppSettingsPreferences();
+            ApplyTabVisibilitySettings();
             StartupService.SetEnabled(StartWithWindows, RunAsAdministrator);
             SettingsService.Save(_settings);
             SetFooterLog("Настройки сохранены");
@@ -3979,11 +4074,63 @@ public sealed class MainViewModel : ViewModelBase
         _settings.StartWithWindows = StartWithWindows;
         _settings.RunAsAdministrator = RunAsAdministrator;
         _settings.StartProxyWithApp = StartProxyWithApp;
-        _settings.StartProcessModeWithApp = AppBranding.IsProcessModeUiVisible && StartProcessModeWithApp;
+        _settings.StartProcessModeWithApp = AppBranding.IsProcessModeUiVisible
+            && RunAsAdministrator
+            && StartProcessModeWithApp;
         _settings.StartBypassWithApp = RunAsAdministrator && StartBypassWithApp;
         _settings.StartMinimizedToTray = StartMinimizedToTray;
         _settings.NotifyOnMinimizeToTray = NotifyOnMinimizeToTray;
         _settings.UpdateListsOnStartup = UpdateListsOnStartup;
+        _settings.ShowTunnelingTab = ShowTunnelingTab;
+        _settings.ShowProxyTab = ShowProxyTab;
+        _settings.ShowProcessModeTab = ShowProcessModeTab;
+        _settings.ShowBypassTab = ShowBypassTab;
+    }
+
+    private void ApplyTabVisibilitySettings()
+    {
+        _appliedShowTunnelingTab = ShowTunnelingTab;
+        _appliedShowProxyTab = ShowProxyTab;
+        _appliedShowProcessModeTab = ShowProcessModeTab;
+        _appliedShowBypassTab = ShowBypassTab;
+        OnPropertyChanged(nameof(IsTunnelingTabVisible));
+        OnPropertyChanged(nameof(IsProxyTabVisible));
+        OnPropertyChanged(nameof(IsProcessModeTabVisible));
+        OnPropertyChanged(nameof(IsBypassTabVisible));
+        EnsureSelectedSectionVisible();
+    }
+
+    private void EnsureSelectedSectionVisible()
+    {
+        if (IsSectionVisible(SelectedSection))
+        {
+            return;
+        }
+
+        SelectedSection = GetFirstVisibleSection() ?? 4;
+    }
+
+    private bool IsSectionVisible(int section) => section switch
+    {
+        0 => IsTunnelingTabVisible,
+        1 => IsProxyTabVisible,
+        2 => IsProcessModeTabVisible,
+        3 => IsBypassTabVisible,
+        4 => true,
+        _ => false
+    };
+
+    private int? GetFirstVisibleSection()
+    {
+        for (var section = 0; section <= 3; section++)
+        {
+            if (IsSectionVisible(section))
+            {
+                return section;
+            }
+        }
+
+        return null;
     }
 
     private void UpdateFooter()
@@ -4394,6 +4541,16 @@ public sealed class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(CanProbeBypassStrategy));
         OnPropertyChanged(nameof(BypassProbeLabel));
         RelayCommand.RaiseAllCanExecuteChanged();
+        NotifyTrayMenuChanged();
+    }
+
+    private void NotifyTrayMenuChanged()
+    {
+        OnPropertyChanged(nameof(HasActiveProxyConfig));
+        OnPropertyChanged(nameof(HasActiveProcessModeConfig));
+        OnPropertyChanged(nameof(IsTrayProxyMenuEnabled));
+        OnPropertyChanged(nameof(IsTrayProcessModeMenuEnabled));
+        OnPropertyChanged(nameof(IsTrayZapretMenuEnabled));
     }
 
     private void CopyTelegramProxyLinkToClipboard()

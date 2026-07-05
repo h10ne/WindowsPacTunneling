@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Threading;
 using WPT.Core.Services;
 using WPT.Wpf.Controls;
 using WPT.Wpf.Services;
@@ -28,6 +29,7 @@ public partial class App : System.Windows.Application
         }
 
         AppLog.Initialize();
+        RegisterGlobalExceptionHandlers();
 
         if (!IsElevatedLaunch(e.Args))
         {
@@ -86,4 +88,27 @@ public partial class App : System.Windows.Application
 
     private static bool IsElevatedLaunch(string[] args) =>
         args.Any(arg => arg.Equals(ElevatedArg, StringComparison.OrdinalIgnoreCase));
+
+    private void RegisterGlobalExceptionHandlers()
+    {
+        DispatcherUnhandledException += (_, e) =>
+        {
+            AppLog.Error(e.Exception, "Необработанное исключение UI-потока");
+        };
+
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+        {
+            if (e.ExceptionObject is Exception ex)
+            {
+                AppLog.Error(ex, "Необработанное исключение приложения");
+            }
+        };
+
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            AppLog.Error(e.Exception, "Необработанное исключение фоновой задачи");
+            e.SetObserved();
+        };
+    }
+
 }
