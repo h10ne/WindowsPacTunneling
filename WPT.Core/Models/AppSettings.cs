@@ -48,6 +48,8 @@ public sealed class AppSettings
 
     public string ProcessModeLink { get; set; } = string.Empty;
 
+    public string? SelectedProcessModeConfigId { get; set; }
+
     public string ProcessModeAmneziaSourceName { get; set; } = string.Empty;
 
     public ProcessModeConnectionType ProcessModeConnectionType { get; set; }

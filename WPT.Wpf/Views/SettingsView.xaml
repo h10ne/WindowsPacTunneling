@@ -44,7 +44,7 @@
 
                         <CheckBox Content="Запускать прокси со стартом приложения" IsChecked="{Binding StartProxyWithApp}" />
 
-                        <CheckBox Content="Запускать обход со стартом приложения" IsChecked="{Binding StartBypassWithApp}"
+                        <CheckBox Content="Запускать Zapret со стартом приложения" IsChecked="{Binding StartBypassWithApp}"
 
                                   IsEnabled="{Binding IsStartBypassWithAppEnabled}" />
 

@@ -315,7 +315,7 @@
 
                                      ctrl:HintProperties.Hint="example.com" />
 
-                            <Button Grid.Column="1" Content="+" Width="40" Margin="8,0,0,0" Style="{StaticResource PrimaryButton}"
+                            <Button Grid.Column="1" Content="+" Margin="8,0,0,0" Style="{StaticResource CompactAddButton}"
 
                                     Command="{Binding AddDomainCommand}" />
 
@@ -395,7 +395,7 @@
 
                                      ctrl:HintProperties.Hint="1.2.3.4 или 10.0.0.0/8" />
 
-                            <Button Grid.Column="1" Content="+" Width="40" Margin="8,0,0,0" Style="{StaticResource PrimaryButton}"
+                            <Button Grid.Column="1" Content="+" Margin="8,0,0,0" Style="{StaticResource CompactAddButton}"
 
                                     Command="{Binding AddIpCommand}" />
 

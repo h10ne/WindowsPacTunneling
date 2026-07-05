@@ -18,13 +18,77 @@
 
         <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
 
-        <Style x:Key="ProcessListItem" TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+        <Style x:Key="ProcessListItem" TargetType="ListBoxItem">
 
             <Setter Property="Padding" Value="0" />
 
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
 
             <Setter Property="Margin" Value="0,0,0,2" />
+
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+
+            <Setter Property="Template">
+
+                <Setter.Value>
+
+                    <ControlTemplate TargetType="ListBoxItem">
+
+                        <Border Background="Transparent" CornerRadius="{StaticResource RadiusSm}" Padding="{TemplateBinding Padding}">
+
+                            <ContentPresenter />
+
+                        </Border>
+
+                    </ControlTemplate>
+
+                </Setter.Value>
+
+            </Setter>
+
+        </Style>
+
+        <Style x:Key="ProcessModeAppInput" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+
+            <Style.Triggers>
+
+                <DataTrigger Binding="{Binding IsProcessModeRunning}" Value="True">
+
+                    <Setter Property="IsReadOnly" Value="True" />
+
+                    <Setter Property="Focusable" Value="False" />
+
+                    <Setter Property="IsTabStop" Value="False" />
+
+                    <Setter Property="Background" Value="{StaticResource ButtonDisabledBackgroundBrush}" />
+
+                    <Setter Property="Foreground" Value="{StaticResource ButtonDisabledForegroundBrush}" />
+
+                    <Setter Property="BorderBrush" Value="{StaticResource ButtonDisabledBorderBrush}" />
+
+                    <Setter Property="Cursor" Value="Arrow" />
+
+                </DataTrigger>
+
+            </Style.Triggers>
+
+        </Style>
+
+        <Style x:Key="ProcessModeAppsList" TargetType="ListBox" BasedOn="{StaticResource {x:Type ListBox}}">
+
+            <Style.Triggers>
+
+                <DataTrigger Binding="{Binding IsProcessModeRunning}" Value="True">
+
+                    <Setter Property="Background" Value="{StaticResource ButtonDisabledBackgroundBrush}" />
+
+                    <Setter Property="BorderBrush" Value="{StaticResource ButtonDisabledBorderBrush}" />
+
+                </DataTrigger>
+
+            </Style.Triggers>
 
         </Style>
 
@@ -48,155 +112,17 @@
 
 
 
-                <TextBlock Text="Тип подключения" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
+                <TextBlock Text="Конфигурация VLESS" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
 
-                <ComboBox ItemsSource="{Binding ProcessModeConnectionTypes}"
+                <ctrl:ProxyConfigSelector ItemsSource="{Binding ProcessModeProxyConfigs}"
 
-                          DisplayMemberPath="DisplayName"
+                                          SelectedItem="{Binding SelectedProcessModeProxyConfig}"
 
-                          SelectedValuePath="Value"
+                                          DeleteCommand="{Binding DeleteSavedProxyConfigCommand}"
 
-                          SelectedValue="{Binding ProcessModeConnectionType}"
+                                          IsEnabled="{Binding IsProcessModeEditingEnabled}"
 
-                          IsEnabled="{Binding IsProcessModeEditingEnabled}"
-
-                          Margin="0,0,0,12" />
-
-
-
-                <StackPanel Visibility="{Binding IsProcessModeLinkSelected, Converter={StaticResource BoolToVis}}">
-
-                    <TextBlock Text="{Binding ProcessModeLinkCaption}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
-
-                    <TextBox Text="{Binding ProcessModeLink, UpdateSourceTrigger=PropertyChanged}"
-
-                             Style="{StaticResource MultilineTextBox}"
-
-                             Height="72" VerticalScrollBarVisibility="Auto" Margin="0,0,0,12"
-
-                             IsEnabled="{Binding IsProcessModeEditingEnabled}"
-
-                             ctrl:HintProperties.Hint="{Binding ProcessModeLinkHint}" />
-
-                </StackPanel>
-
-
-
-                <StackPanel Visibility="{Binding IsProcessModeAmneziaSelected, Converter={StaticResource BoolToVis}}">
-
-                    <TextBlock Text="Конфигурация Amnezia" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
-
-                    <Border x:Name="AmneziaConfigDropZone"
-
-                            AllowDrop="True"
-
-                            DragOver="OnAmneziaConfigDragOver"
-
-                            Drop="OnAmneziaConfigDrop"
-
-                            Background="{StaticResource InputBrush}"
-
-                            BorderBrush="{StaticResource BorderBrush}"
-
-                            BorderThickness="1"
-
-                            CornerRadius="6"
-
-                            Padding="10,8"
-
-                            MinHeight="36"
-
-                            Margin="0,0,0,12"
-
-                            IsEnabled="{Binding IsProcessModeEditingEnabled}">
-
-                        <Grid VerticalAlignment="Center">
-
-                            <Grid.ColumnDefinitions>
-
-                                <ColumnDefinition Width="*" />
-
-                                <ColumnDefinition Width="Auto" />
-
-                                <ColumnDefinition Width="Auto" />
-
-                            </Grid.ColumnDefinitions>
-
-
-
-                            <TextBlock Grid.Column="0"
-
-                                       VerticalAlignment="Center"
-
-                                       Margin="0,0,8,0"
-
-                                       TextTrimming="CharacterEllipsis"
-
-                                       Foreground="{StaticResource TextSecondaryBrush}"
-
-                                       Text="Перетащите .conf или нажмите «Выбрать файл»"
-
-                                       Visibility="{Binding IsProcessModeAmneziaDropHintVisible, Converter={StaticResource BoolToVis}}" />
-
-
-
-                            <TextBlock Grid.Column="0"
-
-                                       VerticalAlignment="Center"
-
-                                       Margin="0,0,8,0"
-
-                                       TextTrimming="CharacterEllipsis"
-
-                                       Visibility="{Binding HasProcessModeAmneziaConfig, Converter={StaticResource BoolToVis}}">
-
-                                <Run Text="{Binding ProcessModeAmneziaEndpoint, Mode=OneWay}" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" />
-
-                                <Run Text=" · " Foreground="{StaticResource TextSecondaryBrush}" />
-
-                                <Run Text="{Binding ProcessModeAmneziaSourceName, Mode=OneWay}" Foreground="{StaticResource TextSecondaryBrush}" />
-
-                            </TextBlock>
-
-
-
-                            <Button Grid.Column="1"
-
-                                    Content="Выбрать файл"
-
-                                    Style="{StaticResource SecondaryButton}"
-
-                                    Padding="10,6"
-
-                                    MinHeight="32"
-
-                                    Command="{Binding PickAmneziaConfigCommand}" />
-
-
-
-                            <Button Grid.Column="2"
-
-                                    Content="×"
-
-                                    Width="32"
-
-                                    MinHeight="32"
-
-                                    Margin="6,0,0,0"
-
-                                    Style="{StaticResource ListItemRemoveZone}"
-
-                                    Command="{Binding ClearAmneziaConfigCommand}"
-
-                                    ToolTip="Очистить"
-
-                                    Visibility="{Binding HasProcessModeAmneziaConfig, Converter={StaticResource BoolToVis}}" />
-
-                        </Grid>
-
-                    </Border>
-
-                </StackPanel>
+                                          Margin="0,0,0,16" />
 
 
 
@@ -234,9 +160,13 @@
 
                     </Expander.Header>
 
-                    <StackPanel Margin="0,8,0,0" MinWidth="440" IsEnabled="{Binding IsProcessModeEditingEnabled}">
+                    <StackPanel Margin="0,8,0,0" MinWidth="440">
 
-                        <ListBox ItemsSource="{Binding ProcessModeApplications}" Margin="0,0,0,8" ItemContainerStyle="{StaticResource ProcessListItem}">
+                        <ListBox ItemsSource="{Binding ProcessModeApplications}" Margin="0,0,0,8"
+
+                                 Style="{StaticResource ProcessModeAppsList}"
+
+                                 ItemContainerStyle="{StaticResource ProcessListItem}">
 
                             <ListBox.ItemTemplate>
 
@@ -252,13 +182,55 @@
 
                                         </Grid.ColumnDefinitions>
 
-                                        <TextBlock Text="{Binding}" VerticalAlignment="Center" Margin="10,0,4,0" />
+                                        <TextBlock Text="{Binding}" VerticalAlignment="Center" Margin="10,0,4,0">
 
-                                        <Button Grid.Column="1" Content="×" Style="{StaticResource ListItemRemoveZone}"
+                                            <TextBlock.Style>
+
+                                                <Style TargetType="TextBlock">
+
+                                                    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+
+                                                    <Style.Triggers>
+
+                                                        <DataTrigger Binding="{Binding DataContext.IsProcessModeRunning, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="True">
+
+                                                            <Setter Property="Foreground" Value="{StaticResource ButtonDisabledForegroundBrush}" />
+
+                                                        </DataTrigger>
+
+                                                    </Style.Triggers>
+
+                                                </Style>
+
+                                            </TextBlock.Style>
+
+                                        </TextBlock>
+
+                                        <Button Grid.Column="1" Content="×"
 
                                                 Command="{Binding DataContext.RemoveProcessModeAppCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
 
-                                                CommandParameter="{Binding}" />
+                                                CommandParameter="{Binding}">
+
+                                            <Button.Style>
+
+                                                <Style TargetType="Button" BasedOn="{StaticResource ListItemRemoveZone}">
+
+                                                    <Style.Triggers>
+
+                                                        <DataTrigger Binding="{Binding DataContext.IsProcessModeRunning, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="True">
+
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+
+                                                        </DataTrigger>
+
+                                                    </Style.Triggers>
+
+                                                </Style>
+
+                                            </Button.Style>
+
+                                        </Button>
 
                                     </Grid>
 
@@ -282,15 +254,21 @@
 
                             <TextBox Text="{Binding NewProcessModeApp, UpdateSourceTrigger=PropertyChanged}"
 
-                                     ctrl:HintProperties.Hint="Discord или Update" />
+                                     Style="{StaticResource ProcessModeAppInput}"
 
-                            <Button Grid.Column="1" Content="+" Width="40" Margin="8,0,0,0" Style="{StaticResource PrimaryButton}"
+                                     ctrl:HintProperties.Hint="Название процесса" />
+
+                            <Button Grid.Column="1" Content="+" Margin="8,0,0,0" Style="{StaticResource CompactAddButton}"
+
+                                    IsEnabled="{Binding IsProcessModeEditingEnabled}"
 
                                     Command="{Binding AddProcessModeAppCommand}" />
 
                             <Button Grid.Column="2" Content="Выбрать запущенный процесс" Margin="8,0,0,0"
 
                                     Style="{StaticResource SecondaryButton}"
+
+                                    Visibility="Collapsed"
 
                                     Command="{Binding PickRunningProcessCommand}" />
 
@@ -302,45 +280,12 @@
 
 
 
-                <Border Style="{StaticResource InfoBar}" Margin="0,16,0,0">
+                <Border Style="{StaticResource InfoBar}" Margin="0,16,0,0"
+                        Visibility="{Binding IsProcessModeInfoVisible, Converter={StaticResource BoolToVis}}">
 
-                    <TextBlock TextWrapping="Wrap" Foreground="{StaticResource TextPrimaryBrush}" FontSize="12"
-
-                               Text="Process Mode перехватывает TCP/UDP выбранных процессов через Redirector. Для Discord добавьте Discord и Update. PM использует отдельный sing-box 1.12 (sniff SNI). Требуются права администратора." />
+                    <TextBlock Text="{Binding ProcessModeInfoText}" TextWrapping="Wrap" Foreground="{StaticResource TextPrimaryBrush}" FontSize="12" />
 
                 </Border>
-
-
-
-                <StackPanel Orientation="Horizontal" Margin="0,16,0,12">
-
-                    <Ellipse Width="8" Height="8" VerticalAlignment="Center" Margin="0,0,8,0">
-
-                        <Ellipse.Style>
-
-                            <Style TargetType="Ellipse">
-
-                                <Setter Property="Fill" Value="#FF6B6B6E" />
-
-                                <Style.Triggers>
-
-                                    <DataTrigger Binding="{Binding IsProcessModeRunning}" Value="True">
-
-                                        <Setter Property="Fill" Value="{StaticResource SuccessBrush}" />
-
-                                    </DataTrigger>
-
-                                </Style.Triggers>
-
-                            </Style>
-
-                        </Ellipse.Style>
-
-                    </Ellipse>
-
-                    <TextBlock Text="{Binding ProcessModeStatus}" Style="{StaticResource CaptionText}" VerticalAlignment="Center" />
-
-                </StackPanel>
 
 
 

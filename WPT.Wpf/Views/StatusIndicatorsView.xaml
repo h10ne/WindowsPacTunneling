@@ -4,11 +4,64 @@
 
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
 
+             xmlns:conv="clr-namespace:WPT.Wpf.Converters"
+
              HorizontalAlignment="Left"
 
              VerticalAlignment="Bottom">
 
     <StackPanel Orientation="Vertical" HorizontalAlignment="Left">
+
+        <StackPanel.Resources>
+            <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
+        </StackPanel.Resources>
+
+        <StackPanel Orientation="Horizontal" Margin="0,0,0,6"
+                    Visibility="{Binding IsProcessModeUiVisible, Converter={StaticResource BoolToVis}}">
+
+            <Ellipse Width="8" Height="8" VerticalAlignment="Center">
+
+                <Ellipse.Style>
+
+                    <Style TargetType="Ellipse">
+
+                        <Setter Property="Fill" Value="#FF6B6B6E" />
+
+                        <Style.Triggers>
+
+                            <DataTrigger Binding="{Binding IsProcessModeRunning}" Value="True">
+
+                                <Setter Property="Fill" Value="{StaticResource SuccessBrush}" />
+
+                            </DataTrigger>
+
+                            <MultiDataTrigger>
+
+                                <MultiDataTrigger.Conditions>
+
+                                    <Condition Binding="{Binding IsProcessModeRunning}" Value="True" />
+
+                                    <Condition Binding="{Binding IsProcessModeUnreachable}" Value="True" />
+
+                                </MultiDataTrigger.Conditions>
+
+                                <Setter Property="Fill" Value="{StaticResource DangerBrush}" />
+
+                            </MultiDataTrigger>
+
+                        </Style.Triggers>
+
+                    </Style>
+
+                </Ellipse.Style>
+
+            </Ellipse>
+
+            <TextBlock Text="{Binding FooterProcessModeStatus}" VerticalAlignment="Center" Style="{StaticResource CaptionText}"
+
+                       Margin="8,0,0,0" TextTrimming="CharacterEllipsis" />
+
+        </StackPanel>
 
         <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
 

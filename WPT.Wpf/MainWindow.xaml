@@ -74,7 +74,7 @@
 
                                  IsChecked="{Binding IsProcessModePage, Mode=TwoWay}" />
 
-                    <RadioButton Content="Обход" Style="{StaticResource NavButton}" GroupName="Nav"
+                    <RadioButton Content="Zapret + TG" Style="{StaticResource NavButton}" GroupName="Nav"
 
                                  IsChecked="{Binding IsBypassPage, Mode=TwoWay}" />
 

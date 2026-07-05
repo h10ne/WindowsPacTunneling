@@ -50,6 +50,28 @@ public partial class ProxyView
         }
     }
 
+    private void OnVpnConfigDropZoneClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (!IsVpnConfigDropEnabled())
+        {
+            return;
+        }
+
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Выберите конфиг AmneziaWG",
+            Filter = "Конфиг Amnezia (*.conf)|*.conf",
+            DefaultExt = ".conf",
+            CheckFileExists = true,
+            Multiselect = false
+        };
+
+        if (dialog.ShowDialog() == true && DataContext is MainViewModel viewModel)
+        {
+            viewModel.TryImportVpnConfigFile(dialog.FileName);
+        }
+    }
+
     private bool IsVpnConfigDropEnabled() =>
         DataContext is MainViewModel { IsProxyEditingEnabled: true };
 

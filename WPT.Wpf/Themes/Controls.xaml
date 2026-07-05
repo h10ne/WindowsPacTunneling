@@ -389,6 +389,54 @@
         </Setter>
     </Style>
 
+    <Style x:Key="CompactAddButton" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
+
+        <Setter Property="Width" Value="36" />
+
+        <Setter Property="MinWidth" Value="36" />
+
+        <Setter Property="Height" Value="36" />
+
+        <Setter Property="MinHeight" Value="36" />
+
+        <Setter Property="Padding" Value="0" />
+
+        <Setter Property="FontSize" Value="16" />
+
+        <Setter Property="FontWeight" Value="SemiBold" />
+
+        <Style.Triggers>
+
+            <Trigger Property="IsEnabled" Value="True">
+
+                <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+
+                <Setter Property="Foreground" Value="White" />
+
+                <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+
+            </Trigger>
+
+            <MultiTrigger>
+
+                <MultiTrigger.Conditions>
+
+                    <Condition Property="IsMouseOver" Value="True" />
+
+                    <Condition Property="IsEnabled" Value="True" />
+
+                </MultiTrigger.Conditions>
+
+                <Setter Property="Background" Value="{StaticResource AccentHoverBrush}" />
+
+                <Setter Property="BorderBrush" Value="{StaticResource AccentHoverBrush}" />
+
+            </MultiTrigger>
+
+        </Style.Triggers>
+
+    </Style>
+
     <Style x:Key="DangerButton" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
         <Setter Property="FocusVisualStyle" Value="{x:Null}" />
         <Setter Property="Foreground" Value="#FFFF8A8A" />
