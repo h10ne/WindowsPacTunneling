@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using Microsoft.Win32;
 
 namespace WPT.Core.Services;
@@ -9,6 +10,8 @@ public static class StartupService
     private const string ValueName = "WindowPacTunneling";
     private const string TaskName = "WindowPacTunneling";
     private const string ElevatedArg = "--elevated";
+
+    private static readonly Encoding SchtasksOutputEncoding = Encoding.GetEncoding(866);
 
     public static bool IsEnabled()
     {
@@ -24,6 +27,12 @@ public static class StartupService
 
     public static void SetEnabled(bool enabled, bool runAsAdministrator = false)
     {
+        if (enabled && runAsAdministrator && !AdminHelper.IsRunningAsAdmin())
+        {
+            throw new InvalidOperationException(
+                "Автозапуск от имени администратора можно включить только из WPT, запущенного от имени администратора.");
+        }
+
         ClearRegistryRun();
         ClearScheduledTask();
 
@@ -71,22 +80,14 @@ public static class StartupService
             return;
         }
 
-        RunSchtasks($"/Delete /TN \"{TaskName}\" /F");
+        TryRunSchtasks($"/Delete /TN \"{TaskName}\" /F");
     }
 
     private static bool HasScheduledTask()
     {
         try
         {
-            using var process = Process.Start(new ProcessStartInfo
-            {
-                FileName = "schtasks.exe",
-                Arguments = $"/Query /TN \"{TaskName}\"",
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            });
+            using var process = Process.Start(CreateSchtasksStartInfo($"/Query /TN \"{TaskName}\""));
 
             return process?.WaitForExit(5000) == true && process.ExitCode == 0;
         }
@@ -98,24 +99,74 @@ public static class StartupService
 
     private static void RunSchtasks(string arguments)
     {
-        using var process = Process.Start(new ProcessStartInfo
+        using var process = Process.Start(CreateSchtasksStartInfo(arguments))
+            ?? throw new InvalidOperationException("Не удалось запустить schtasks.exe");
+
+        process.WaitForExit();
+        if (process.ExitCode == 0)
+        {
+            return;
+        }
+
+        var error = process.StandardError.ReadToEnd();
+        var output = process.StandardOutput.ReadToEnd();
+        var message = string.IsNullOrWhiteSpace(error) ? output : error;
+        throw new InvalidOperationException(NormalizeSchtasksError(message));
+    }
+
+    private static bool TryRunSchtasks(string arguments)
+    {
+        try
+        {
+            using var process = Process.Start(CreateSchtasksStartInfo(arguments));
+            if (process == null)
+            {
+                return false;
+            }
+
+            if (!process.WaitForExit(5000))
+            {
+                return false;
+            }
+
+            _ = process.StandardOutput.ReadToEnd();
+            _ = process.StandardError.ReadToEnd();
+            return process.ExitCode == 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static ProcessStartInfo CreateSchtasksStartInfo(string arguments) =>
+        new()
         {
             FileName = "schtasks.exe",
             Arguments = arguments,
             UseShellExecute = false,
             CreateNoWindow = true,
             RedirectStandardOutput = true,
-            RedirectStandardError = true
-        }) ?? throw new InvalidOperationException("Не удалось запустить schtasks.exe");
+            RedirectStandardError = true,
+            StandardOutputEncoding = SchtasksOutputEncoding,
+            StandardErrorEncoding = SchtasksOutputEncoding
+        };
 
-        process.WaitForExit();
-        if (process.ExitCode != 0)
+    private static string NormalizeSchtasksError(string rawMessage)
+    {
+        var message = rawMessage.Trim();
+        if (string.IsNullOrWhiteSpace(message))
         {
-            var error = process.StandardError.ReadToEnd();
-            throw new InvalidOperationException(
-                string.IsNullOrWhiteSpace(error)
-                    ? "Не удалось настроить автозагрузку Windows"
-                    : error.Trim());
+            return "Не удалось настроить автозагрузку Windows";
         }
+
+        if (message.Contains("Отказано в доступе", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("Access is denied", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Отказано в доступе. Для автозапуска от имени администратора сохраните настройки в WPT, запущенном от имени администратора.";
+        }
+
+        return message;
     }
+
 }

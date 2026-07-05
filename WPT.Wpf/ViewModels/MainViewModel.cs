@@ -3185,8 +3185,8 @@ public sealed class MainViewModel : ViewModelBase
         {
             UpdateAppSettingsPreferences();
             ApplyTabVisibilitySettings();
-            StartupService.SetEnabled(StartWithWindows, RunAsAdministrator);
             SettingsService.Save(_settings);
+            StartupService.SetEnabled(StartWithWindows, RunAsAdministrator);
             SetFooterLog("Настройки сохранены");
             MessageBox.Show(
                 "Настройки сохранены.",
