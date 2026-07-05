@@ -153,6 +153,8 @@
 
                                     Drop="OnVpnConfigDrop"
 
+                                    MouseLeftButtonUp="OnVpnConfigDropZoneClick"
+
                                     Background="{StaticResource InputBrush}"
 
                                     BorderBrush="{StaticResource BorderBrush}"
@@ -161,11 +163,29 @@
 
                                     CornerRadius="6"
 
-                                    Padding="10,8"
-
-                                    MinHeight="72"
+                                    Padding="8,6"
 
                                     Margin="0,0,0,12">
+
+                                <Border.Style>
+
+                                    <Style TargetType="Border">
+
+                                        <Setter Property="Cursor" Value="Hand" />
+
+                                        <Style.Triggers>
+
+                                            <DataTrigger Binding="{Binding IsProxyEditingEnabled}" Value="False">
+
+                                                <Setter Property="Cursor" Value="Arrow" />
+
+                                            </DataTrigger>
+
+                                        </Style.Triggers>
+
+                                    </Style>
+
+                                </Border.Style>
 
                                 <Grid VerticalAlignment="Center">
 
@@ -175,7 +195,7 @@
 
                                                Foreground="{StaticResource TextSecondaryBrush}"
 
-                                               Text="Перетащите сюда файл конфигурации (.conf)"
+                                               Text="Перетащите сюда файл конфигурации (.conf) или нажмите для выбора"
 
                                                Visibility="{Binding IsVpnConfigDropHintVisible, Converter={StaticResource BoolToVis}}" />
 

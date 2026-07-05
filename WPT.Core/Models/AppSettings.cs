@@ -48,6 +48,8 @@ public sealed class AppSettings
 
     public string ProcessModeLink { get; set; } = string.Empty;
 
+    public string? SelectedProcessModeConfigId { get; set; }
+
     public string ProcessModeAmneziaSourceName { get; set; } = string.Empty;
 
     public ProcessModeConnectionType ProcessModeConnectionType { get; set; }
@@ -73,4 +75,12 @@ public sealed class AppSettings
     public bool StartBypassWithApp { get; set; }
 
     public bool RunAsAdministrator { get; set; }
+
+    public bool ShowTunnelingTab { get; set; } = true;
+
+    public bool ShowProxyTab { get; set; } = true;
+
+    public bool ShowProcessModeTab { get; set; } = true;
+
+    public bool ShowBypassTab { get; set; } = true;
 }

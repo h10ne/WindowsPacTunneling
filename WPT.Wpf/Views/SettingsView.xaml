@@ -4,6 +4,8 @@
 
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
 
+             xmlns:conv="clr-namespace:WPT.Wpf.Converters"
+
              MinWidth="480"
 
              HorizontalAlignment="Stretch"
@@ -11,6 +13,12 @@
              VerticalAlignment="Stretch"
 
              HorizontalContentAlignment="Stretch">
+
+    <UserControl.Resources>
+
+        <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
+
+    </UserControl.Resources>
 
     <TabControl Style="{StaticResource SettingsTabControl}"
 
@@ -44,7 +52,13 @@
 
                         <CheckBox Content="Запускать прокси со стартом приложения" IsChecked="{Binding StartProxyWithApp}" />
 
-                        <CheckBox Content="Запускать обход со стартом приложения" IsChecked="{Binding StartBypassWithApp}"
+                        <CheckBox Content="Запускать Process Mode со стартом приложения" IsChecked="{Binding StartProcessModeWithApp}"
+
+                                  IsEnabled="{Binding IsStartProcessModeWithAppEnabled}"
+
+                                  Visibility="{Binding IsProcessModeUiVisible, Converter={StaticResource BoolToVis}}" />
+
+                        <CheckBox Content="Запускать Zapret со стартом приложения" IsChecked="{Binding StartBypassWithApp}"
 
                                   IsEnabled="{Binding IsStartBypassWithAppEnabled}" />
 
@@ -55,6 +69,20 @@
                         <Button Content="Перезапустить от имени администратора" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left"
 
                                 Command="{Binding RestartAsAdminCommand}" Margin="0,12,0,0" MinWidth="280" />
+
+
+
+                        <TextBlock Text="Вкладки" Style="{StaticResource SectionTitle}" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,16,0,8" />
+
+                        <CheckBox Content="Показывать «Тунелирование»" IsChecked="{Binding ShowTunnelingTab}" />
+
+                        <CheckBox Content="Показывать «Прокси»" IsChecked="{Binding ShowProxyTab}" />
+
+                        <CheckBox Content="Показывать «Process Mode»" IsChecked="{Binding ShowProcessModeTab}"
+
+                                  Visibility="{Binding IsProcessModeUiVisible, Converter={StaticResource BoolToVis}}" />
+
+                        <CheckBox Content="Показывать «Zapret + TG»" IsChecked="{Binding ShowBypassTab}" />
 
 
 

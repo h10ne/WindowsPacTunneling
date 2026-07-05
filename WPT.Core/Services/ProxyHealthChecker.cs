@@ -5,7 +5,11 @@ using System.Net.Sockets;
 
 namespace WPT.Core.Services;
 
-public readonly record struct ProxyHealthResult(bool IsReachable, int? LatencyMs, bool UdpSupported = true);
+public readonly record struct ProxyHealthResult(
+    bool IsReachable,
+    int? LatencyMs,
+    bool UdpSupported = true,
+    bool DiscordReachable = true);
 
 public static class ProxyHealthChecker
 {
@@ -66,11 +70,13 @@ public static class ProxyHealthChecker
         }
     }
 
+    private const string DiscordProbeHost = "discord.com";
+
     public static async Task<ProxyHealthResult> CheckProcessModeAsync(int localPort, CancellationToken cancellationToken = default)
     {
         if (!LocalProxyService.IsPortListening(localPort))
         {
-            return new ProxyHealthResult(false, null, false);
+            return new ProxyHealthResult(false, null, false, false);
         }
 
         var stopwatch = Stopwatch.StartNew();
@@ -83,18 +89,18 @@ public static class ProxyHealthChecker
 
             if (!await NegotiateSocks5Async(stream, cancellationToken))
             {
-                return new ProxyHealthResult(false, null, false);
+                return new ProxyHealthResult(false, null, false, false);
             }
 
             if (!await TrySocks5ConnectAsync(stream, GstaticProbeAddress, 80, cancellationToken))
             {
-                return new ProxyHealthResult(false, null, false);
+                return new ProxyHealthResult(false, null, false, false);
             }
 
             var latencyMs = (int)stopwatch.ElapsedMilliseconds;
+            var discordReachable = await TrySocks5ConnectDiscordByResolvedIpAsync(localPort, cancellationToken);
             var udpSupported = await TrySocks5UdpRelayAsync(localPort, cancellationToken);
-            return new ProxyHealthResult(udpSupported, latencyMs, udpSupported);
-            // IsReachable = SOCKS5 TCP CONNECT + UDP relay с ответом; не проверяет WebRTC приложений
+            return new ProxyHealthResult(discordReachable, latencyMs, udpSupported, discordReachable);
         }
         catch (OperationCanceledException)
         {
@@ -102,7 +108,7 @@ public static class ProxyHealthChecker
         }
         catch
         {
-            return new ProxyHealthResult(false, null, false);
+            return new ProxyHealthResult(false, null, false, false);
         }
     }
 
@@ -139,6 +145,120 @@ public static class ProxyHealthChecker
         }
 
         return response[0] == 0x05 && response[1] == 0x00;
+    }
+
+    private static async Task<bool> TrySocks5ConnectDiscordByResolvedIpAsync(int localPort, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var addresses = await Dns.GetHostAddressesAsync(DiscordProbeHost, cancellationToken);
+            var ipv4 = addresses.FirstOrDefault(x => x.AddressFamily == AddressFamily.InterNetwork);
+            if (ipv4 == null)
+            {
+                return false;
+            }
+
+            TcpClient? tcpClient = null;
+            try
+            {
+                tcpClient = new TcpClient();
+                await tcpClient.ConnectAsync(IPAddress.Loopback, localPort, cancellationToken);
+                await using var stream = tcpClient.GetStream();
+
+                if (!await NegotiateSocks5Async(stream, cancellationToken))
+                {
+                    return false;
+                }
+
+                return await TrySocks5ConnectAsync(stream, ipv4.GetAddressBytes(), 443, cancellationToken);
+            }
+            finally
+            {
+                tcpClient?.Dispose();
+            }
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static async Task<bool> TrySocks5ConnectDomainAsync(
+        int localPort,
+        string host,
+        int port,
+        CancellationToken cancellationToken)
+    {
+        TcpClient? tcpClient = null;
+        try
+        {
+            var hostBytes = System.Text.Encoding.ASCII.GetBytes(host);
+            if (hostBytes.Length is 0 or > 255)
+            {
+                return false;
+            }
+
+            tcpClient = new TcpClient();
+            await tcpClient.ConnectAsync(IPAddress.Loopback, localPort, cancellationToken);
+            await using var stream = tcpClient.GetStream();
+
+            if (!await NegotiateSocks5Async(stream, cancellationToken))
+            {
+                return false;
+            }
+
+            var request = new byte[7 + hostBytes.Length];
+            request[0] = 0x05;
+            request[1] = 0x01;
+            request[2] = 0x00;
+            request[3] = 0x03;
+            request[4] = (byte)hostBytes.Length;
+            hostBytes.CopyTo(request, 5);
+            request[5 + hostBytes.Length] = (byte)(port >> 8);
+            request[6 + hostBytes.Length] = (byte)port;
+
+            await stream.WriteAsync(request, cancellationToken);
+
+            return await ReadSocks5ConnectResponseAsync(stream, cancellationToken);
+        }
+        catch
+        {
+            return false;
+        }
+        finally
+        {
+            tcpClient?.Dispose();
+        }
+    }
+
+    private static async Task<bool> ReadSocks5ConnectResponseAsync(Stream stream, CancellationToken cancellationToken)
+    {
+        var header = new byte[5];
+        if (!await ReadExactAsync(stream, header, cancellationToken))
+        {
+            return false;
+        }
+
+        if (header[0] != 0x05 || header[1] != 0x00)
+        {
+            return false;
+        }
+
+        var extraLength = header[3] switch
+        {
+            0x01 => 4 + 2,
+            0x03 => header[4] + 2,
+            0x04 => 16 + 2,
+            _ => 0
+        };
+
+        if (extraLength <= 0)
+        {
+            return false;
+        }
+
+        var tail = new byte[extraLength];
+        return await ReadExactAsync(stream, tail, cancellationToken);
     }
 
     private static async Task<bool> TrySocks5UdpRelayAsync(int localPort, CancellationToken cancellationToken)

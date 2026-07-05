@@ -35,6 +35,7 @@ public sealed class MainViewModel : ViewModelBase
     private bool _isProcessModeHealthy;
     private bool _isProcessModeUnreachable;
     private bool _isProcessModeUdpSupported = true;
+    private bool _isDiscordReachable = true;
     private bool _isProcessModeHealthChecking;
     private int? _processModePingMs;
 
@@ -49,6 +50,8 @@ public sealed class MainViewModel : ViewModelBase
     private string _vpnConfigSaveNotice = string.Empty;
     private string? _pendingVpnWireGuardConfig;
     private SavedProxyConfigItem? _selectedSavedProxyConfig;
+    private SavedProxyConfigItem? _selectedProcessModeProxyConfig;
+    private bool _isSyncingProcessModeConfig;
     private bool _isSyncingProxyConfig;
     private string _localPort = string.Empty;
     private string _processModeLink = string.Empty;
@@ -64,7 +67,7 @@ public sealed class MainViewModel : ViewModelBase
     private string _footerLog = string.Empty;
     private string _footerRight = "PAC: выкл";
     private string _footerProxyStatus = "Прокси: остановлен";
-    private string _footerBypassStatus = "Обход: остановлен";
+    private string _footerBypassStatus = "Zapret: остановлен";
     private string _footerProcessModeStatus = "PM: остановлен";
     private string _proxyState = "Прокси остановлен";
     private int _selectedSection;
@@ -72,6 +75,8 @@ public sealed class MainViewModel : ViewModelBase
     private bool _isBusy;
     private bool _isProxyOperating;
     private bool _isProxyStopping;
+    private bool _isProcessModeOperating;
+    private bool _isProcessModeStopping;
     private bool _isLocalProxyRunning;
     private bool _startWithWindows;
     private bool _startProxyWithApp;
@@ -91,11 +96,19 @@ public sealed class MainViewModel : ViewModelBase
     private readonly string _appVersionLabel = AppVersion.CurrentLabel;
     private bool _notifyOnMinimizeToTray;
     private bool _updateListsOnStartup;
+    private bool _showTunnelingTab = true;
+    private bool _showProxyTab = true;
+    private bool _showProcessModeTab = true;
+    private bool _showBypassTab = true;
+    private bool _appliedShowTunnelingTab = true;
+    private bool _appliedShowProxyTab = true;
+    private bool _appliedShowProcessModeTab = true;
+    private bool _appliedShowBypassTab = true;
     private bool _routeAllTrafficThroughProxy;
     private bool _showRussiaInsideRestrictionHint;
     private bool _bypassEnableZapret = true;
     private bool _bypassEnableTelegram = true;
-    private string _bypassStatus = "Обход: остановлен";
+    private string _bypassStatus = "Zapret: остановлен";
     private string _bypassActiveStrategy = string.Empty;
     private string? _selectedZapretStrategy;
     private string _telegramProxyLink = string.Empty;
@@ -116,19 +129,7 @@ public sealed class MainViewModel : ViewModelBase
         CustomIps = [];
         AvailableZapretStrategies = [];
         ProcessModeApplications = [];
-        ProcessModeConnectionTypes =
-        [
-            new ProcessModeConnectionTypeOption
-            {
-                Value = ProcessModeConnectionType.Shadowsocks,
-                DisplayName = "Shadowsocks (ss://)"
-            },
-            new ProcessModeConnectionTypeOption
-            {
-                Value = ProcessModeConnectionType.Amnezia,
-                DisplayName = "Amnezia (.conf)"
-            }
-        ];
+        ProcessModeProxyConfigs = [];
         ProxyHistory = [];
         PacPortHistory = [];
         SavedProxyConfigs = [];
@@ -152,7 +153,7 @@ public sealed class MainViewModel : ViewModelBase
         AddIpCommand = new RelayCommand(AddCustomIp);
         RemoveIpCommand = new RelayCommand(p => RemoveCustomIp((string)p!));
         ApplyProcessModeCommand = new RelayCommand(ApplyProcessMode, () => !IsBusy && !IsProcessModeRunning);
-        ToggleProcessModeCommand = new RelayCommand(async () => await ToggleProcessModeAsync(), () => !IsBusy);
+        ToggleProcessModeCommand = new RelayCommand(async () => await ToggleProcessModeAsync(), () => !IsProcessModeOperating);
         AddProcessModeAppCommand = new RelayCommand(AddProcessModeApp);
         RemoveProcessModeAppCommand = new RelayCommand(p => RemoveProcessModeApp((string)p!));
         PickRunningProcessCommand = new RelayCommand(_ => { });
@@ -210,7 +211,7 @@ public sealed class MainViewModel : ViewModelBase
 
     public ObservableCollection<string> ProcessModeApplications { get; }
 
-    public IReadOnlyList<ProcessModeConnectionTypeOption> ProcessModeConnectionTypes { get; }
+    public ObservableCollection<SavedProxyConfigItem> ProcessModeProxyConfigs { get; }
 
     public ObservableCollection<string> ProxyHistory { get; }
 
@@ -331,6 +332,25 @@ public sealed class MainViewModel : ViewModelBase
         }
     }
 
+    public SavedProxyConfigItem? SelectedProcessModeProxyConfig
+    {
+        get => _selectedProcessModeProxyConfig;
+        set
+        {
+            if (!SetProperty(ref _selectedProcessModeProxyConfig, value))
+            {
+                return;
+            }
+
+            if (_isSyncingProcessModeConfig || value == null)
+            {
+                return;
+            }
+
+            ApplySelectedProcessModeProxyConfig(value);
+        }
+    }
+
     public string LocalPort
     {
         get => _localPort;
@@ -340,7 +360,13 @@ public sealed class MainViewModel : ViewModelBase
     public string ProcessModeLink
     {
         get => _processModeLink;
-        set => SetProperty(ref _processModeLink, value);
+        set
+        {
+            if (SetProperty(ref _processModeLink, value))
+            {
+                NotifyTrayMenuChanged();
+            }
+        }
     }
 
     public string ProcessModeAmneziaEndpoint
@@ -377,14 +403,31 @@ public sealed class MainViewModel : ViewModelBase
             if (SetProperty(ref _processModeConnectionType, value))
             {
                 OnPropertyChanged(nameof(IsProcessModeSsSelected));
+                OnPropertyChanged(nameof(IsProcessModeVlessSelected));
                 OnPropertyChanged(nameof(IsProcessModeAmneziaSelected));
+                OnPropertyChanged(nameof(IsProcessModeLinkSelected));
+                OnPropertyChanged(nameof(ProcessModeLinkCaption));
+                OnPropertyChanged(nameof(ProcessModeLinkHint));
             }
         }
     }
 
     public bool IsProcessModeSsSelected => ProcessModeConnectionType == ProcessModeConnectionType.Shadowsocks;
 
+    public bool IsProcessModeVlessSelected => ProcessModeConnectionType == ProcessModeConnectionType.Vless;
+
+    public bool IsProcessModeLinkSelected =>
+        ProcessModeConnectionType is ProcessModeConnectionType.Shadowsocks or ProcessModeConnectionType.Vless;
+
     public bool IsProcessModeAmneziaSelected => ProcessModeConnectionType == ProcessModeConnectionType.Amnezia;
+
+    public string ProcessModeLinkCaption => IsProcessModeVlessSelected
+        ? "Ссылка VLESS Reality"
+        : "Ссылка Shadowsocks";
+
+    public string ProcessModeLinkHint => IsProcessModeVlessSelected
+        ? "vless://uuid@server:443?type=tcp&security=reality&flow=xtls-rprx-vision&sni=...&fp=chrome&pbk=...&sid=..."
+        : "ss://method:password@server:port#remark";
 
     public string ProcessModePort
     {
@@ -441,6 +484,7 @@ public sealed class MainViewModel : ViewModelBase
 
             OnPropertyChanged(nameof(IsTunnelingPage));
             OnPropertyChanged(nameof(IsProxyPage));
+            OnPropertyChanged(nameof(IsProcessModePage));
             OnPropertyChanged(nameof(IsBypassPage));
             OnPropertyChanged(nameof(IsSettingsPage));
         }
@@ -458,16 +502,22 @@ public sealed class MainViewModel : ViewModelBase
         set { if (value) SelectedSection = 1; }
     }
 
-    public bool IsBypassPage
+    public bool IsProcessModePage
     {
         get => SelectedSection == 2;
         set { if (value) SelectedSection = 2; }
     }
 
-    public bool IsSettingsPage
+    public bool IsBypassPage
     {
         get => SelectedSection == 3;
         set { if (value) SelectedSection = 3; }
+    }
+
+    public bool IsSettingsPage
+    {
+        get => SelectedSection == 4;
+        set { if (value) SelectedSection = 4; }
     }
 
     public int SettingsTabIndex
@@ -532,20 +582,44 @@ public sealed class MainViewModel : ViewModelBase
         }
     }
 
+    public bool IsProcessModeOperating
+    {
+        get => _isProcessModeOperating;
+        private set
+        {
+            if (SetProperty(ref _isProcessModeOperating, value))
+            {
+                OnPropertyChanged(nameof(ProcessModeToggleLabel));
+                OnPropertyChanged(nameof(IsProcessModeEditingEnabled));
+                RelayCommand.RaiseAllCanExecuteChanged();
+            }
+        }
+    }
+
     public bool IsBusy
     {
         get => _isBusy;
         set
         {
-            if (SetProperty(ref _isBusy, value))
+            if (_isBusy == value)
             {
-                OnPropertyChanged(nameof(IsProxyEditingEnabled));
-                OnPropertyChanged(nameof(IsProcessModeEditingEnabled));
-                OnPropertyChanged(nameof(IsBypassEditingEnabled));
-                OnPropertyChanged(nameof(IsTgWsProxyPortEditingEnabled));
-                NotifyBypassCommandState();
-                RelayCommand.RaiseAllCanExecuteChanged();
+                return;
             }
+
+            void Apply()
+            {
+                if (SetProperty(ref _isBusy, value))
+                {
+                    OnPropertyChanged(nameof(IsProxyEditingEnabled));
+                    OnPropertyChanged(nameof(IsProcessModeEditingEnabled));
+                    OnPropertyChanged(nameof(IsBypassEditingEnabled));
+                    OnPropertyChanged(nameof(IsTgWsProxyPortEditingEnabled));
+                    NotifyBypassCommandState();
+                    RelayCommand.RaiseAllCanExecuteChanged();
+                }
+            }
+
+            RunOnUiThread(Apply);
         }
     }
 
@@ -558,6 +632,7 @@ public sealed class MainViewModel : ViewModelBase
         {
             if (SetProperty(ref _isPacActive, value))
             {
+                NotifyProcessModeInfoChanged();
                 RelayCommand.RaiseAllCanExecuteChanged();
             }
         }
@@ -576,9 +651,11 @@ public sealed class MainViewModel : ViewModelBase
 
     public bool IsProcessModeRunning => _processModeService.IsRunning;
 
+    public bool IsProcessModeUiVisible => AppBranding.IsProcessModeUiVisible;
+
     public bool IsProxyEditingEnabled => !IsProxyRunning && !IsBusy && !IsProxyOperating;
 
-    public bool IsProcessModeEditingEnabled => !IsProcessModeRunning && !IsBusy;
+    public bool IsProcessModeEditingEnabled => !IsProcessModeRunning && !IsBusy && !IsProcessModeOperating;
 
     public string ProxyToggleLabel
     {
@@ -611,7 +688,7 @@ public sealed class MainViewModel : ViewModelBase
         {
             if (IsBypassRunning)
             {
-                return "Остановить обход";
+                return "Остановить Zapret";
             }
 
             if (IsBypassProbingStrategy && _bypassProbeFromStart)
@@ -621,7 +698,7 @@ public sealed class MainViewModel : ViewModelBase
                     : "Подбор стратегии...";
             }
 
-            return "Запустить обход";
+            return "Запустить Zapret";
         }
     }
 
@@ -737,6 +814,16 @@ public sealed class MainViewModel : ViewModelBase
 
     public bool HasZapretStrategy => !string.IsNullOrWhiteSpace(_settings.SavedZapretStrategy);
 
+    public bool HasActiveProxyConfig => CanRestoreLocalProxy();
+
+    public bool HasActiveProcessModeConfig => HasProcessModeConfig();
+
+    public bool IsTrayProxyMenuEnabled => HasActiveProxyConfig;
+
+    public bool IsTrayProcessModeMenuEnabled => AdminHelper.IsRunningAsAdmin() && HasActiveProcessModeConfig;
+
+    public bool IsTrayZapretMenuEnabled => AdminHelper.IsRunningAsAdmin() && HasZapretStrategy;
+
     public string TelegramProxyLink
     {
         get => _telegramProxyLink;
@@ -749,7 +836,18 @@ public sealed class MainViewModel : ViewModelBase
         }
     }
 
-    public string ProcessModeToggleLabel => IsProcessModeRunning ? "Остановить" : "Запустить";
+    public string ProcessModeToggleLabel
+    {
+        get
+        {
+            if (IsProcessModeOperating)
+            {
+                return _isProcessModeStopping ? "Остановка..." : "Запуск...";
+            }
+
+            return IsProcessModeRunning ? "Остановить" : "Запустить";
+        }
+    }
 
     public bool StartWithWindows
     {
@@ -777,9 +875,11 @@ public sealed class MainViewModel : ViewModelBase
             if (SetProperty(ref _runAsAdministrator, value) && !value)
             {
                 StartBypassWithApp = false;
+                StartProcessModeWithApp = false;
             }
 
             OnPropertyChanged(nameof(IsStartBypassWithAppEnabled));
+            OnPropertyChanged(nameof(IsStartProcessModeWithAppEnabled));
         }
     }
 
@@ -790,6 +890,8 @@ public sealed class MainViewModel : ViewModelBase
     }
 
     public bool IsStartBypassWithAppEnabled => RunAsAdministrator;
+
+    public bool IsStartProcessModeWithAppEnabled => RunAsAdministrator;
 
     public bool StartMinimizedToTray
     {
@@ -809,7 +911,68 @@ public sealed class MainViewModel : ViewModelBase
         set => SetProperty(ref _updateListsOnStartup, value);
     }
 
+    public bool ShowTunnelingTab
+    {
+        get => _showTunnelingTab;
+        set => SetProperty(ref _showTunnelingTab, value);
+    }
+
+    public bool ShowProxyTab
+    {
+        get => _showProxyTab;
+        set => SetProperty(ref _showProxyTab, value);
+    }
+
+    public bool ShowProcessModeTab
+    {
+        get => _showProcessModeTab;
+        set => SetProperty(ref _showProcessModeTab, value);
+    }
+
+    public bool ShowBypassTab
+    {
+        get => _showBypassTab;
+        set => SetProperty(ref _showBypassTab, value);
+    }
+
+    public bool IsTunnelingTabVisible => _appliedShowTunnelingTab;
+
+    public bool IsProxyTabVisible => _appliedShowProxyTab;
+
+    public bool IsProcessModeTabVisible => AppBranding.IsProcessModeUiVisible && _appliedShowProcessModeTab;
+
+    public bool IsBypassTabVisible => _appliedShowBypassTab;
+
     public bool IsRestartAsAdminEnabled => !AdminHelper.IsRunningAsAdmin();
+
+    public bool IsProcessModeInfoVisible =>
+        !AdminHelper.IsRunningAsAdmin() || IsPacActive || RouteAllTrafficThroughProxy;
+
+    public string ProcessModeInfoText
+    {
+        get
+        {
+            var parts = new List<string>();
+            if (!AdminHelper.IsRunningAsAdmin())
+            {
+                parts.Add("WPT нужно запустить от имени администратора.");
+            }
+
+            if (IsPacActive)
+            {
+                parts.Add(
+                    "Если приложение направляет трафик через системный прокси (PAC), Process Mode может для него не работать — трафик пойдёт через PAC, а не Redirector.");
+            }
+
+            if (RouteAllTrafficThroughProxy)
+            {
+                parts.Add(
+                    "На вкладке «Туннелирование» включено «Весь трафик через прокси»: рекомендуется выключить эту опцию и направлять через PAC только нужные сайты или списки, если Process Mode нужен для тех же приложений.");
+            }
+
+            return string.Join("\n\n", parts);
+        }
+    }
 
     public string ZapretUpdateStatus
     {
@@ -904,6 +1067,7 @@ public sealed class MainViewModel : ViewModelBase
             if (SetProperty(ref _routeAllTrafficThroughProxy, value))
             {
                 OnPropertyChanged(nameof(IsTunnelingListsEnabled));
+                NotifyProcessModeInfoChanged();
             }
         }
     }
@@ -1064,7 +1228,7 @@ public sealed class MainViewModel : ViewModelBase
 
             if (_settings.IsBypassActive && !_settings.StartBypassWithApp)
             {
-                SetFooterLog("Обход был активен. Нажмите «Запустить» для повторной активации.");
+                SetFooterLog("Zapret был активен. Нажмите «Запустить» для повторной активации.");
             }
         }
         finally
@@ -1257,11 +1421,30 @@ public sealed class MainViewModel : ViewModelBase
         StartWithWindows = _settings.StartWithWindows;
         RunAsAdministrator = _settings.RunAsAdministrator;
         StartProxyWithApp = _settings.StartProxyWithApp;
-        StartProcessModeWithApp = AppBranding.IsProcessModeUiVisible && _settings.StartProcessModeWithApp;
+        StartProcessModeWithApp = AppBranding.IsProcessModeUiVisible
+            && _settings.RunAsAdministrator
+            && _settings.StartProcessModeWithApp;
         StartBypassWithApp = _settings.RunAsAdministrator && _settings.StartBypassWithApp;
         StartMinimizedToTray = _settings.StartMinimizedToTray;
         NotifyOnMinimizeToTray = _settings.NotifyOnMinimizeToTray;
         UpdateListsOnStartup = _settings.UpdateListsOnStartup;
+        _showTunnelingTab = _settings.ShowTunnelingTab;
+        _showProxyTab = _settings.ShowProxyTab;
+        _showProcessModeTab = _settings.ShowProcessModeTab;
+        _showBypassTab = _settings.ShowBypassTab;
+        _appliedShowTunnelingTab = _settings.ShowTunnelingTab;
+        _appliedShowProxyTab = _settings.ShowProxyTab;
+        _appliedShowProcessModeTab = _settings.ShowProcessModeTab;
+        _appliedShowBypassTab = _settings.ShowBypassTab;
+        OnPropertyChanged(nameof(ShowTunnelingTab));
+        OnPropertyChanged(nameof(ShowProxyTab));
+        OnPropertyChanged(nameof(ShowProcessModeTab));
+        OnPropertyChanged(nameof(ShowBypassTab));
+        OnPropertyChanged(nameof(IsTunnelingTabVisible));
+        OnPropertyChanged(nameof(IsProxyTabVisible));
+        OnPropertyChanged(nameof(IsProcessModeTabVisible));
+        OnPropertyChanged(nameof(IsBypassTabVisible));
+        EnsureSelectedSectionVisible();
         RouteAllTrafficThroughProxy = _settings.RouteAllTrafficThroughProxy;
         LoadSavedProxyConfigs();
         if (SelectedSavedProxyConfig == null)
@@ -1289,8 +1472,8 @@ public sealed class MainViewModel : ViewModelBase
         RefreshAmneziaBoxUpdateStatusHint();
 
         ProcessModeLink = _settings.ProcessModeLink;
-        ProcessModeConnectionType = _settings.ProcessModeConnectionType;
-        RefreshProcessModeAmneziaConfigState(_settings.ProcessModeAmneziaSourceName);
+        ProcessModeConnectionType = ProcessModeConnectionType.Vless;
+        SyncProcessModeProxyConfigSelection();
         ProcessModePort = _settings.ProcessModePort.ToString();
         if (InputParser.TryParsePort(ProcessModePort, out var processModePort, out _))
         {
@@ -1445,6 +1628,11 @@ public sealed class MainViewModel : ViewModelBase
 
     private void AddProcessModeApp()
     {
+        if (!IsProcessModeEditingEnabled)
+        {
+            return;
+        }
+
         var value = NewProcessModeApp.Trim();
         if (string.IsNullOrWhiteSpace(value))
         {
@@ -1499,18 +1687,50 @@ public sealed class MainViewModel : ViewModelBase
 
     private async Task ToggleProcessModeAsync()
     {
-        if (_processModeService.IsRunning)
+        if (IsProcessModeOperating)
         {
-            StopProcessMode();
             return;
         }
 
-        if (InputParser.TryParsePort(ProcessModePort, out var port, out _))
-        {
-            _processModeService.Prepare(port);
-        }
+        var stopping = _processModeService.IsRunning;
+        _isProcessModeStopping = stopping;
+        IsProcessModeOperating = true;
+        OnPropertyChanged(nameof(ProcessModeToggleLabel));
+        OnPropertyChanged(nameof(IsProcessModeRunning));
+        SetFooterLog(stopping ? "Остановка Process Mode..." : "Запуск Process Mode...");
+        await Task.Yield();
 
-        await StartProcessModeAsync();
+        try
+        {
+            if (stopping)
+            {
+                await Task.Run(() => _processModeService.Stop()).ConfigureAwait(false);
+                await RunOnUiThreadAsync(() =>
+                {
+                    SaveProcessModeSettings(isActive: false);
+                    ResetProcessModeHealth();
+                    SetFooterLog("Process Mode остановлен");
+                }).ConfigureAwait(false);
+            }
+            else
+            {
+                if (InputParser.TryParsePort(ProcessModePort, out var port, out _))
+                {
+                    _processModeService.Prepare(port);
+                }
+
+                await StartProcessModeAsync(silent: false, manageUiState: false).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            await RunOnUiThreadAsync(() =>
+            {
+                _isProcessModeStopping = false;
+                IsProcessModeOperating = false;
+                UpdateProcessModeUi();
+            }).ConfigureAwait(false);
+        }
     }
 
     private async Task RestoreProcessModeAsync(bool silent = false)
@@ -1551,11 +1771,6 @@ public sealed class MainViewModel : ViewModelBase
             return;
         }
 
-        if (!TryResolveProcessModePacConflict(silent, localPort))
-        {
-            return;
-        }
-
         if (!silent)
         {
             RunOnUiThread(() => IsBusy = true);
@@ -1571,9 +1786,9 @@ public sealed class MainViewModel : ViewModelBase
                 SetFooterLog(message);
             }));
             await _processModeService.TryRestoreAsync(
-                silent ? _settings.ProcessModeConnectionType : ProcessModeConnectionType,
-                TryGetProcessModeShadowsocksProfile(silent),
-                TryGetProcessModeAmneziaConfig(silent),
+                ProcessModeConnectionType.Vless,
+                TryGetProcessModeProxyProfile(silent),
+                null,
                 localPort,
                 applications,
                 progress,
@@ -1607,7 +1822,7 @@ public sealed class MainViewModel : ViewModelBase
         }
     }
 
-    private async Task StartProcessModeAsync(bool silent = false)
+    private async Task StartProcessModeAsync(bool silent = false, bool manageUiState = true)
     {
         if (_processModeService.IsRunning)
         {
@@ -1655,17 +1870,17 @@ public sealed class MainViewModel : ViewModelBase
             return;
         }
 
-        if (!TryResolveProcessModePacConflict(silent, localPort))
-        {
-            return;
-        }
-
-        if (!silent)
+        if (!silent && manageUiState)
         {
             RunOnUiThread(() => IsBusy = true);
         }
 
         SetFooterLog("Запуск Process Mode...");
+
+        if (!silent)
+        {
+            await Task.Yield();
+        }
 
         try
         {
@@ -1675,9 +1890,9 @@ public sealed class MainViewModel : ViewModelBase
                 SetFooterLog(message);
             }));
             await _processModeService.StartAsync(
-                silent ? _settings.ProcessModeConnectionType : ProcessModeConnectionType,
-                TryGetProcessModeShadowsocksProfile(silent),
-                TryGetProcessModeAmneziaConfig(silent),
+                ProcessModeConnectionType.Vless,
+                TryGetProcessModeProxyProfile(silent),
+                null,
                 localPort,
                 applications,
                 progress,
@@ -1704,7 +1919,7 @@ public sealed class MainViewModel : ViewModelBase
         }
         finally
         {
-            if (!silent)
+            if (!silent && manageUiState)
             {
                 RunOnUiThread(() => IsBusy = false);
             }
@@ -1720,47 +1935,17 @@ public sealed class MainViewModel : ViewModelBase
         SetFooterLog("Process Mode остановлен");
     }
 
-    private bool TryResolveProcessModePacConflict(bool silent, int processModePort)
+    private void NotifyProcessModeInfoChanged()
     {
-        if (!ProcessModePacConflict.ShouldWarn)
-        {
-            return true;
-        }
-
-        var message = ProcessModePacConflict.BuildWarningMessage(
-            ProxyAddress,
-            processModePort,
-            IsAnyLocalProxyRunning());
-
-        if (silent)
-        {
-            SetFooterLog("PAC включён — Discord идёт через системный прокси, не Redirector");
-            ProcessModeStatus = FooterLog;
-            return true;
-        }
-
-        var result = MessageBox.Show(
-            message,
-            "PAC и Process Mode",
-            MessageBoxButton.YesNoCancel,
-            MessageBoxImage.Warning);
-
-        if (result == MessageBoxResult.Yes)
-        {
-            _ = DisablePacAsync();
-            return true;
-        }
-
-        return result == MessageBoxResult.No;
+        OnPropertyChanged(nameof(ProcessModeInfoText));
+        OnPropertyChanged(nameof(IsProcessModeInfoVisible));
     }
 
     private void UpdateProcessModeUi()
     {
         var isRunning = _processModeService.IsRunning;
         var address = _processModeService.LocalProxyAddress;
-        var tunnelLabel = _processModeService.ActiveConnectionType == ProcessModeConnectionType.Amnezia
-            ? "AmneziaWG"
-            : "ss";
+        var tunnelLabel = "VLESS+XUDP";
 
         if (!isRunning)
         {
@@ -1778,6 +1963,12 @@ public sealed class MainViewModel : ViewModelBase
             FooterProcessModeStatus = $"PM: SOCKS · {_processModePingMs} мс";
             ProcessModeStatus =
                 $"Process Mode: SOCKS ok · {address} · {tunnelLabel} · Redirector · {ProcessModeApplications.Count} прилож. · {_processModePingMs} мс";
+        }
+        else if (_isProcessModeUnreachable && _processModePingMs != null && !_isDiscordReachable)
+        {
+            FooterProcessModeStatus = "PM: Discord недоступен";
+            ProcessModeStatus =
+                $"Process Mode: Discord недоступен через туннель · {address} · {tunnelLabel} · Redirector · {ProcessModeApplications.Count} прилож.";
         }
         else if (_isProcessModeUnreachable && _processModePingMs != null && !_isProcessModeUdpSupported)
         {
@@ -1805,6 +1996,7 @@ public sealed class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsProcessModeHealthy));
         OnPropertyChanged(nameof(IsProcessModeUnreachable));
         RelayCommand.RaiseAllCanExecuteChanged();
+        NotifyTrayMenuChanged();
     }
 
     private static bool ContainsIgnoreCase(IEnumerable<string> items, string value) =>
@@ -2066,6 +2258,7 @@ public sealed class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsProxyEditingEnabled));
         OnPropertyChanged(nameof(ProxyToggleLabel));
         RelayCommand.RaiseAllCanExecuteChanged();
+        NotifyTrayMenuChanged();
     }
 
     private void LoadSavedProxyConfigs()
@@ -2085,12 +2278,66 @@ public sealed class MainViewModel : ViewModelBase
         {
             SelectedSavedProxyConfig = null;
             _isSyncingProxyConfig = false;
+            RefreshProcessModeProxyConfigs();
+            SyncProcessModeProxyConfigSelection();
             return;
         }
 
         SelectedSavedProxyConfig = selected;
         _isSyncingProxyConfig = false;
         ApplySelectedProxyConfig(selected, updateSelection: false);
+        RefreshProcessModeProxyConfigs();
+        SyncProcessModeProxyConfigSelection();
+    }
+
+    private void RefreshProcessModeProxyConfigs()
+    {
+        ProcessModeProxyConfigs.Clear();
+
+        foreach (var config in SavedProxyConfigs.Where(x =>
+                     string.Equals(x.Protocol, "vless", StringComparison.OrdinalIgnoreCase)))
+        {
+            ProcessModeProxyConfigs.Add(config);
+        }
+    }
+
+    private void SyncProcessModeProxyConfigSelection()
+    {
+        RefreshProcessModeProxyConfigs();
+
+        _isSyncingProcessModeConfig = true;
+
+        var selected = ProcessModeProxyConfigs.FirstOrDefault(x => x.Id == _settings.SelectedProcessModeConfigId)
+            ?? ProcessModeProxyConfigs.FirstOrDefault(x =>
+                string.Equals(x.Link, _settings.ProcessModeLink, StringComparison.OrdinalIgnoreCase))
+            ?? ProcessModeProxyConfigs.FirstOrDefault();
+
+        SelectedProcessModeProxyConfig = selected;
+
+        if (selected != null)
+        {
+            ProcessModeLink = selected.Link;
+            ProcessModeConnectionType = ProcessModeConnectionType.Vless;
+        }
+
+        _isSyncingProcessModeConfig = false;
+        NotifyTrayMenuChanged();
+    }
+
+    private void ApplySelectedProcessModeProxyConfig(SavedProxyConfigItem config, bool updateSelection = true)
+    {
+        _isSyncingProcessModeConfig = true;
+        _settings.SelectedProcessModeConfigId = config.Id;
+        ProcessModeLink = config.Link;
+        ProcessModeConnectionType = ProcessModeConnectionType.Vless;
+
+        if (updateSelection && !ReferenceEquals(SelectedProcessModeProxyConfig, config))
+        {
+            SelectedProcessModeProxyConfig = config;
+        }
+
+        _isSyncingProcessModeConfig = false;
+        NotifyTrayMenuChanged();
     }
 
     private void ApplySelectedProxyConfig(SavedProxyConfigItem config, bool updateSelection = true)
@@ -2121,6 +2368,7 @@ public sealed class MainViewModel : ViewModelBase
         }
 
         _isSyncingProxyConfig = false;
+        NotifyTrayMenuChanged();
     }
 
     private void SaveProxyConfig()
@@ -2513,6 +2761,14 @@ public sealed class MainViewModel : ViewModelBase
                 : string.Empty;
         }
 
+        if (_settings.SelectedProcessModeConfigId == item.Id)
+        {
+            var nextVless = _settings.SavedProxyConfigs.FirstOrDefault(x =>
+                string.Equals(x.Protocol, "vless", StringComparison.OrdinalIgnoreCase));
+            _settings.SelectedProcessModeConfigId = nextVless?.Id;
+            _settings.ProcessModeLink = nextVless?.Link ?? string.Empty;
+        }
+
         SettingsService.Save(_settings);
         LoadSavedProxyConfigs();
 
@@ -2669,7 +2925,7 @@ public sealed class MainViewModel : ViewModelBase
         {
             if (!cancellationToken.IsCancellationRequested)
             {
-                ApplyProcessModeHealthResult(new ProxyHealthResult(false, null));
+                ApplyProcessModeHealthResult(new ProxyHealthResult(false, null, false, false));
             }
         }
         finally
@@ -2688,6 +2944,7 @@ public sealed class MainViewModel : ViewModelBase
         _isProcessModeHealthy = result.IsReachable;
         _isProcessModeUnreachable = !result.IsReachable;
         _isProcessModeUdpSupported = result.UdpSupported;
+        _isDiscordReachable = result.DiscordReachable;
         _processModePingMs = result.LatencyMs;
 
         if (_processModeService.IsRunning)
@@ -2712,6 +2969,7 @@ public sealed class MainViewModel : ViewModelBase
         _isProcessModeHealthy = false;
         _isProcessModeUnreachable = false;
         _isProcessModeUdpSupported = true;
+        _isDiscordReachable = true;
         _processModePingMs = null;
         OnPropertyChanged(nameof(IsProcessModeHealthy));
         OnPropertyChanged(nameof(IsProcessModeUnreachable));
@@ -2749,7 +3007,7 @@ public sealed class MainViewModel : ViewModelBase
         {
             if (reEnableUi)
             {
-                IsBusy = false;
+                await RunOnUiThreadAsync(() => IsBusy = false).ConfigureAwait(false);
             }
         }
     }
@@ -2959,6 +3217,7 @@ public sealed class MainViewModel : ViewModelBase
         try
         {
             UpdateAppSettingsPreferences();
+            ApplyTabVisibilitySettings();
             StartupService.SetEnabled(StartWithWindows, RunAsAdministrator);
             SettingsService.Save(_settings);
             SetFooterLog("Настройки сохранены");
@@ -2987,7 +3246,7 @@ public sealed class MainViewModel : ViewModelBase
 
     private void OpenSettingsForUpdate()
     {
-        SelectedSection = 3;
+        SelectedSection = 4;
         SettingsTabIndex = 1;
     }
 
@@ -3531,17 +3790,17 @@ public sealed class MainViewModel : ViewModelBase
     {
         UpdateProcessModePreferences();
 
-        if (!string.IsNullOrWhiteSpace(ProcessModeLink))
+        _settings.ProcessModeConnectionType = ProcessModeConnectionType.Vless;
+
+        if (SelectedProcessModeProxyConfig != null)
+        {
+            _settings.SelectedProcessModeConfigId = SelectedProcessModeProxyConfig.Id;
+            _settings.ProcessModeLink = SelectedProcessModeProxyConfig.Link;
+        }
+        else if (!string.IsNullOrWhiteSpace(ProcessModeLink))
         {
             _settings.ProcessModeLink = ProcessModeLink.Trim();
         }
-
-        if (!string.IsNullOrWhiteSpace(ProcessModeAmneziaSourceName))
-        {
-            _settings.ProcessModeAmneziaSourceName = ProcessModeAmneziaSourceName;
-        }
-
-        _settings.ProcessModeConnectionType = ProcessModeConnectionType;
 
         if (InputParser.TryParsePort(ProcessModePort, out var port, out _))
         {
@@ -3555,8 +3814,13 @@ public sealed class MainViewModel : ViewModelBase
     private void UpdateProcessModePreferences()
     {
         _settings.ProcessModeLink = ProcessModeLink.Trim();
-        _settings.ProcessModeAmneziaSourceName = ProcessModeAmneziaSourceName;
-        _settings.ProcessModeConnectionType = ProcessModeConnectionType;
+        _settings.ProcessModeConnectionType = ProcessModeConnectionType.Vless;
+
+        if (SelectedProcessModeProxyConfig != null)
+        {
+            _settings.SelectedProcessModeConfigId = SelectedProcessModeProxyConfig.Id;
+            _settings.ProcessModeLink = SelectedProcessModeProxyConfig.Link;
+        }
 
         if (InputParser.TryParsePort(ProcessModePort, out var port, out _))
         {
@@ -3566,52 +3830,113 @@ public sealed class MainViewModel : ViewModelBase
         _settings.ProcessModeApplications = ProcessModeApplications.ToList();
     }
 
-    private bool HasProcessModeConfig() => ProcessModeConnectionType switch
-    {
-        ProcessModeConnectionType.Amnezia => HasProcessModeAmneziaConfig,
-        _ => !string.IsNullOrWhiteSpace(ProcessModeLink)
-    };
+    private bool HasProcessModeConfig() =>
+        SelectedProcessModeProxyConfig != null
+        || ProcessModeConnectionValidator.TryValidate(
+            ProcessModeConnectionType.Vless,
+            ProcessModeLink,
+            out _,
+            out _);
 
-    private bool HasProcessModeConfigFromSettings() => _settings.ProcessModeConnectionType switch
+    private bool HasProcessModeConfigFromSettings()
     {
-        ProcessModeConnectionType.Amnezia => AmneziaConfigStorage.TryReadStored(out _, out _, out _),
-        _ => !string.IsNullOrWhiteSpace(_settings.ProcessModeLink)
-    };
+        if (_settings.SavedProxyConfigs.Any(x =>
+                x.Id == _settings.SelectedProcessModeConfigId
+                && string.Equals(x.Protocol, "vless", StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+
+        return ProcessModeConnectionValidator.TryValidate(
+            ProcessModeConnectionType.Vless,
+            _settings.ProcessModeLink,
+            out _,
+            out _);
+    }
 
     private bool TryValidateProcessModeConnectionFromSettings(out string error)
     {
         error = string.Empty;
 
-        return _settings.ProcessModeConnectionType switch
+        if (_settings.SavedProxyConfigs.FirstOrDefault(x => x.Id == _settings.SelectedProcessModeConfigId) is { } saved
+            && string.Equals(saved.Protocol, "vless", StringComparison.OrdinalIgnoreCase))
         {
-            ProcessModeConnectionType.Amnezia => AmneziaConfigStorage.TryReadStored(out _, out _, out error),
-            _ => ProxyLinkParser.TryParse(_settings.ProcessModeLink, out _, out error)
-        };
+            return ProcessModeConnectionValidator.TryValidate(
+                ProcessModeConnectionType.Vless,
+                saved.Link,
+                out _,
+                out error);
+        }
+
+        return ProcessModeConnectionValidator.TryValidate(
+            ProcessModeConnectionType.Vless,
+            _settings.ProcessModeLink,
+            out _,
+            out error);
     }
 
     private bool TryValidateProcessModeConnection(out string error)
     {
         error = string.Empty;
 
-        return ProcessModeConnectionType switch
+        if (SelectedProcessModeProxyConfig != null)
         {
-            ProcessModeConnectionType.Amnezia => AmneziaConfigStorage.TryReadStored(out _, out _, out error),
-            _ => ProxyLinkParser.TryParse(ProcessModeLink, out _, out error)
-        };
-    }
-
-    private ProxyProfile? TryGetProcessModeShadowsocksProfile(bool fromSettings = false)
-    {
-        var connectionType = fromSettings ? _settings.ProcessModeConnectionType : ProcessModeConnectionType;
-        var link = fromSettings ? _settings.ProcessModeLink : ProcessModeLink;
-
-        if (connectionType != ProcessModeConnectionType.Shadowsocks)
-        {
-            return null;
+            return ProcessModeConnectionValidator.TryValidate(
+                ProcessModeConnectionType.Vless,
+                SelectedProcessModeProxyConfig.Link,
+                out _,
+                out error);
         }
 
-        return ProxyLinkParser.TryParse(link, out var profile, out _)
-            ? profile
+        return ProcessModeConnectionValidator.TryValidate(
+            ProcessModeConnectionType.Vless,
+            ProcessModeLink,
+            out _,
+            out error);
+    }
+
+    private ProxyProfile? TryGetProcessModeProxyProfile(bool fromSettings = false)
+    {
+        if (fromSettings)
+        {
+            if (_settings.SavedProxyConfigs.FirstOrDefault(x => x.Id == _settings.SelectedProcessModeConfigId) is { } saved
+                && string.Equals(saved.Protocol, "vless", StringComparison.OrdinalIgnoreCase))
+            {
+                return ProcessModeConnectionValidator.TryValidate(
+                    ProcessModeConnectionType.Vless,
+                    saved.Link,
+                    out var profile,
+                    out _)
+                    ? profile
+                    : null;
+            }
+
+            return ProcessModeConnectionValidator.TryValidate(
+                ProcessModeConnectionType.Vless,
+                _settings.ProcessModeLink,
+                out var settingsProfile,
+                out _)
+                ? settingsProfile
+                : null;
+        }
+
+        if (SelectedProcessModeProxyConfig != null)
+        {
+            return ProcessModeConnectionValidator.TryValidate(
+                ProcessModeConnectionType.Vless,
+                SelectedProcessModeProxyConfig.Link,
+                out var selectedProfile,
+                out _)
+                ? selectedProfile
+                : null;
+        }
+
+        return ProcessModeConnectionValidator.TryValidate(
+            ProcessModeConnectionType.Vless,
+            ProcessModeLink,
+            out var linkProfile,
+            out _)
+            ? linkProfile
             : null;
     }
 
@@ -3749,11 +4074,63 @@ public sealed class MainViewModel : ViewModelBase
         _settings.StartWithWindows = StartWithWindows;
         _settings.RunAsAdministrator = RunAsAdministrator;
         _settings.StartProxyWithApp = StartProxyWithApp;
-        _settings.StartProcessModeWithApp = AppBranding.IsProcessModeUiVisible && StartProcessModeWithApp;
+        _settings.StartProcessModeWithApp = AppBranding.IsProcessModeUiVisible
+            && RunAsAdministrator
+            && StartProcessModeWithApp;
         _settings.StartBypassWithApp = RunAsAdministrator && StartBypassWithApp;
         _settings.StartMinimizedToTray = StartMinimizedToTray;
         _settings.NotifyOnMinimizeToTray = NotifyOnMinimizeToTray;
         _settings.UpdateListsOnStartup = UpdateListsOnStartup;
+        _settings.ShowTunnelingTab = ShowTunnelingTab;
+        _settings.ShowProxyTab = ShowProxyTab;
+        _settings.ShowProcessModeTab = ShowProcessModeTab;
+        _settings.ShowBypassTab = ShowBypassTab;
+    }
+
+    private void ApplyTabVisibilitySettings()
+    {
+        _appliedShowTunnelingTab = ShowTunnelingTab;
+        _appliedShowProxyTab = ShowProxyTab;
+        _appliedShowProcessModeTab = ShowProcessModeTab;
+        _appliedShowBypassTab = ShowBypassTab;
+        OnPropertyChanged(nameof(IsTunnelingTabVisible));
+        OnPropertyChanged(nameof(IsProxyTabVisible));
+        OnPropertyChanged(nameof(IsProcessModeTabVisible));
+        OnPropertyChanged(nameof(IsBypassTabVisible));
+        EnsureSelectedSectionVisible();
+    }
+
+    private void EnsureSelectedSectionVisible()
+    {
+        if (IsSectionVisible(SelectedSection))
+        {
+            return;
+        }
+
+        SelectedSection = GetFirstVisibleSection() ?? 4;
+    }
+
+    private bool IsSectionVisible(int section) => section switch
+    {
+        0 => IsTunnelingTabVisible,
+        1 => IsProxyTabVisible,
+        2 => IsProcessModeTabVisible,
+        3 => IsBypassTabVisible,
+        4 => true,
+        _ => false
+    };
+
+    private int? GetFirstVisibleSection()
+    {
+        for (var section = 0; section <= 3; section++)
+        {
+            if (IsSectionVisible(section))
+            {
+                return section;
+            }
+        }
+
+        return null;
     }
 
     private void UpdateFooter()
@@ -3920,7 +4297,7 @@ public sealed class MainViewModel : ViewModelBase
 
             SaveBypassSettings(isActive: true);
             UpdateBypassUi();
-            SetFooterLog("Обход запущен");
+            SetFooterLog("Zapret запущен");
         }
         catch (Exception ex)
         {
@@ -4051,8 +4428,8 @@ public sealed class MainViewModel : ViewModelBase
             _telegramLinkCopiedToClipboard = false;
             SaveBypassSettings(isActive: false);
             UpdateBypassUi();
-            BypassStatus = "Обход: остановлен";
-            SetFooterLog("Обход остановлен");
+            BypassStatus = "Zapret: остановлен";
+            SetFooterLog("Zapret остановлен");
         }
         finally
         {
@@ -4108,26 +4485,26 @@ public sealed class MainViewModel : ViewModelBase
         TelegramProxyLink = _bypassService.IsTelegramRunning
             ? _bypassService.TelegramProxyLink
             : BuildTelegramProxyLinkPreview(_settings.TgWsProxyPort, _settings.TgWsProxySecret);
-        BypassStatus = IsBypassRunning ? "Обход: активен" : "Обход: остановлен";
+        BypassStatus = IsBypassRunning ? "Zapret: активен" : "Zapret: остановлен";
 
         if (!IsBypassRunning)
         {
-            FooterBypassStatus = "Обход: остановлен";
+            FooterBypassStatus = "Zapret: остановлен";
         }
         else if (_bypassService.IsZapretRunning && _bypassService.IsTelegramRunning)
         {
-            FooterBypassStatus = "Обход: zapret + TG";
+            FooterBypassStatus = "Zapret: zapret + TG";
         }
         else if (_bypassService.IsZapretRunning)
         {
             var strategy = BypassActiveStrategy;
             FooterBypassStatus = string.IsNullOrWhiteSpace(strategy)
-                ? "Обход: zapret"
-                : $"Обход: {strategy}";
+                ? "Zapret: zapret"
+                : $"Zapret: {strategy}";
         }
         else
         {
-            FooterBypassStatus = "Обход: Telegram";
+            FooterBypassStatus = "Zapret: Telegram";
         }
 
         UpdateBypassInfoText();
@@ -4143,7 +4520,7 @@ public sealed class MainViewModel : ViewModelBase
     private void UpdateBypassInfoText()
     {
         var parts = new List<string>();
-        if (BypassEnableZapret)
+        if (BypassEnableZapret && !AdminHelper.IsRunningAsAdmin())
         {
             parts.Add("Для YouTube и Discord WPT нужно запустить от имени администратора.");
         }
@@ -4164,6 +4541,16 @@ public sealed class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(CanProbeBypassStrategy));
         OnPropertyChanged(nameof(BypassProbeLabel));
         RelayCommand.RaiseAllCanExecuteChanged();
+        NotifyTrayMenuChanged();
+    }
+
+    private void NotifyTrayMenuChanged()
+    {
+        OnPropertyChanged(nameof(HasActiveProxyConfig));
+        OnPropertyChanged(nameof(HasActiveProcessModeConfig));
+        OnPropertyChanged(nameof(IsTrayProxyMenuEnabled));
+        OnPropertyChanged(nameof(IsTrayProcessModeMenuEnabled));
+        OnPropertyChanged(nameof(IsTrayZapretMenuEnabled));
     }
 
     private void CopyTelegramProxyLinkToClipboard()
@@ -4257,7 +4644,7 @@ public sealed class MainViewModel : ViewModelBase
 
             if (_bypassService.IsZapretRunning)
             {
-                SetFooterLog("Обход восстановлен");
+                SetFooterLog("Zapret восстановлен");
             }
 
             return;

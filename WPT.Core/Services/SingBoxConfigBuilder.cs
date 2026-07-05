@@ -41,24 +41,6 @@ public static class SingBoxConfigBuilder
         var root = new JsonObject
         {
             ["log"] = new JsonObject { ["level"] = "warn" },
-            ["dns"] = new JsonObject
-            {
-                ["servers"] = new JsonArray
-                {
-                    new JsonObject
-                    {
-                        ["tag"] = "local",
-                        ["type"] = "local"
-                    },
-                    new JsonObject
-                    {
-                        ["tag"] = "remote",
-                        ["type"] = "udp",
-                        ["server"] = "8.8.8.8"
-                    }
-                },
-                ["final"] = "remote"
-            },
             ["inbounds"] = new JsonArray
             {
                 new JsonObject
@@ -67,12 +49,16 @@ public static class SingBoxConfigBuilder
                     ["tag"] = "socks-in",
                     ["listen"] = "127.0.0.1",
                     ["listen_port"] = localPort,
-                    ["udp_timeout"] = "5m"
+                    ["udp_timeout"] = "5m",
+                    // Redirector шлёт SOCKS CONNECT по IP; без override SNI TLS к Discord ломается.
+                    ["sniff"] = true,
+                    ["sniff_override_destination"] = true,
+                    ["sniff_timeout"] = "1s"
                 }
             },
             ["outbounds"] = new JsonArray
             {
-                BuildOutbound(profile),
+                BuildProcessModeOutbound(profile),
                 new JsonObject { ["type"] = "direct", ["tag"] = "direct" }
             },
             ["route"] = new JsonObject
@@ -83,6 +69,18 @@ public static class SingBoxConfigBuilder
         };
 
         return root.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+    }
+
+    private static JsonObject BuildProcessModeOutbound(ProxyProfile profile)
+    {
+        var outbound = BuildOutbound(profile);
+
+        if (string.Equals(profile.Protocol, "vless", StringComparison.OrdinalIgnoreCase))
+        {
+            outbound["packet_encoding"] = "xudp";
+        }
+
+        return outbound;
     }
 
     private static JsonObject BuildOutbound(ProxyProfile profile) =>

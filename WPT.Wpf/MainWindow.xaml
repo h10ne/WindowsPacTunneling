@@ -22,6 +22,8 @@
 
         <conv:SectionToVisibilityConverter x:Key="SectionVis" />
 
+        <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
+
     </Window.Resources>
 
     <Grid>
@@ -64,13 +66,25 @@
 
                     <RadioButton Content="Тунелирование" Style="{StaticResource NavButton}" GroupName="Nav"
 
+                                 Visibility="{Binding IsTunnelingTabVisible, Converter={StaticResource BoolToVis}}"
+
                                  IsChecked="{Binding IsTunnelingPage, Mode=TwoWay}" />
 
                     <RadioButton Content="Прокси" Style="{StaticResource NavButton}" GroupName="Nav"
 
+                                 Visibility="{Binding IsProxyTabVisible, Converter={StaticResource BoolToVis}}"
+
                                  IsChecked="{Binding IsProxyPage, Mode=TwoWay}" />
 
-                    <RadioButton Content="Обход" Style="{StaticResource NavButton}" GroupName="Nav"
+                    <RadioButton Content="Process Mode" Style="{StaticResource NavButton}" GroupName="Nav"
+
+                                 Visibility="{Binding IsProcessModeTabVisible, Converter={StaticResource BoolToVis}}"
+
+                                 IsChecked="{Binding IsProcessModePage, Mode=TwoWay}" />
+
+                    <RadioButton Content="Zapret + TG" Style="{StaticResource NavButton}" GroupName="Nav"
+
+                                 Visibility="{Binding IsBypassTabVisible, Converter={StaticResource BoolToVis}}"
 
                                  IsChecked="{Binding IsBypassPage, Mode=TwoWay}" />
 
@@ -102,13 +116,17 @@
 
                                  Visibility="{Binding SelectedSection, Converter={StaticResource SectionVis}, ConverterParameter=1}" />
 
+                <views:ProcessModeView DataContext="{Binding}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+
+                                       Visibility="{Binding SelectedSection, Converter={StaticResource SectionVis}, ConverterParameter=2}" />
+
                 <views:BypassView DataContext="{Binding}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
 
-                                  Visibility="{Binding SelectedSection, Converter={StaticResource SectionVis}, ConverterParameter=2}" />
+                                  Visibility="{Binding SelectedSection, Converter={StaticResource SectionVis}, ConverterParameter=3}" />
 
                 <views:SettingsView DataContext="{Binding}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
 
-                                    Visibility="{Binding SelectedSection, Converter={StaticResource SectionVis}, ConverterParameter=3}" />
+                                    Visibility="{Binding SelectedSection, Converter={StaticResource SectionVis}, ConverterParameter=4}" />
 
             </Grid>
 

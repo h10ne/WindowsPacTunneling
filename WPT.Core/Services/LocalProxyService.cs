@@ -11,6 +11,8 @@ public sealed class LocalProxyService : IDisposable
     private readonly string _configPath;
     private readonly string _pidPath;
     private readonly bool _forProcessMode;
+    private readonly List<string> _startupErrors = [];
+    private readonly object _startupErrorsSync = new();
 
     public LocalProxyService(string? instanceName = null)
     {
@@ -61,7 +63,9 @@ public sealed class LocalProxyService : IDisposable
 
         Stop();
 
-        await SingBoxInstaller.EnsureInstalledAsync(progress, cancellationToken);
+        await (_forProcessMode
+            ? SingBoxInstaller.EnsureProcessModeInstalledAsync(progress, cancellationToken)
+            : SingBoxInstaller.EnsureInstalledAsync(progress, cancellationToken));
 
         var executable = ResolveExecutablePath();
         if (!File.Exists(executable))
@@ -86,6 +90,11 @@ public sealed class LocalProxyService : IDisposable
             WorkingDirectory = AppPaths.BinDirectory
         };
 
+        lock (_startupErrorsSync)
+        {
+            _startupErrors.Clear();
+        }
+
         var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
         process.ErrorDataReceived += (_, e) =>
         {
@@ -94,7 +103,16 @@ public sealed class LocalProxyService : IDisposable
                 return;
             }
 
-            if (e.Data.Contains("ERROR", StringComparison.OrdinalIgnoreCase))
+            lock (_startupErrorsSync)
+            {
+                if (_startupErrors.Count < 8)
+                {
+                    _startupErrors.Add(e.Data);
+                }
+            }
+
+            if (e.Data.Contains("ERROR", StringComparison.OrdinalIgnoreCase)
+                || e.Data.Contains("FATAL", StringComparison.OrdinalIgnoreCase))
             {
                 AppLog.Warning($"sing-box: {e.Data}");
             }
@@ -127,7 +145,7 @@ public sealed class LocalProxyService : IDisposable
         if (!await WaitForPortAsync(localPort, process, cancellationToken))
         {
             Stop();
-            throw new InvalidOperationException($"Локальный прокси не ответил на порту {localPort}.");
+            throw new InvalidOperationException(BuildStartupFailureMessage(localPort, process));
         }
 
         if (process.HasExited)
@@ -311,8 +329,13 @@ public sealed class LocalProxyService : IDisposable
         }
     }
 
-    private static string ResolveExecutablePath()
+    private string ResolveExecutablePath()
     {
+        if (_forProcessMode && File.Exists(SingBoxInstaller.ProcessModeExecutablePath))
+        {
+            return SingBoxInstaller.ProcessModeExecutablePath;
+        }
+
         var bundled = Path.Combine(AppContext.BaseDirectory, "sing-box.exe");
         return File.Exists(bundled) ? bundled : SingBoxInstaller.ExecutablePath;
     }
@@ -337,5 +360,44 @@ public sealed class LocalProxyService : IDisposable
         }
 
         return false;
+    }
+
+    private string BuildStartupFailureMessage(int localPort, Process process)
+    {
+        List<string> errors;
+        lock (_startupErrorsSync)
+        {
+            errors = _startupErrors.ToList();
+        }
+
+        var builder = new System.Text.StringBuilder();
+        builder.Append($"Локальный прокси не ответил на порту {localPort}.");
+
+        if (process.HasExited)
+        {
+            builder.Append($" sing-box завершился (код {process.ExitCode}).");
+        }
+
+        var fatal = errors.LastOrDefault(x => x.Contains("FATAL", StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrWhiteSpace(fatal))
+        {
+            builder.Append(' ').Append(StripAnsi(fatal));
+        }
+        else if (errors.Count > 0)
+        {
+            builder.Append(' ').Append(StripAnsi(errors[^1]));
+        }
+
+        return builder.ToString();
+    }
+
+    private static string StripAnsi(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        return System.Text.RegularExpressions.Regex.Replace(value, "\u001b\\[[0-9;]*m", string.Empty).Trim();
     }
 }
