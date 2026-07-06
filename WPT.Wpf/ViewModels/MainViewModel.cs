@@ -5,6 +5,7 @@ using WPT.Core;
 using WPT.Core.Models;
 using WPT.Core.Services;
 using WPT.Core.Services.Bypass;
+using WPT.Wpf.Services;
 using MessageBox = System.Windows.MessageBox;
 using MessageBoxButton = System.Windows.MessageBoxButton;
 using MessageBoxImage = System.Windows.MessageBoxImage;
@@ -4527,7 +4528,7 @@ public sealed class MainViewModel : ViewModelBase
             return;
         }
 
-        System.Windows.Clipboard.SetText(TelegramProxyLink);
+        ClipboardHelper.SetText(TelegramProxyLink);
         _telegramLinkCopiedToClipboard = true;
         UpdateBypassInfoText();
     }

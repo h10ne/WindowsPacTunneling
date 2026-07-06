@@ -11,7 +11,13 @@ public static class StartupService
     private const string TaskName = "WindowPacTunneling";
     private const string ElevatedArg = "--elevated";
 
-    private static readonly Encoding SchtasksOutputEncoding = Encoding.GetEncoding(866);
+    private static readonly Encoding SchtasksOutputEncoding = CreateSchtasksOutputEncoding();
+
+    private static Encoding CreateSchtasksOutputEncoding()
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        return Encoding.GetEncoding(866);
+    }
 
     public static bool IsEnabled()
     {

@@ -13,6 +13,7 @@ public partial class App : System.Windows.Application
     static App()
     {
         ComboBoxAssist.EnsureInitialized();
+        ClipboardAssist.EnsureInitialized();
     }
 
     protected override void OnStartup(System.Windows.StartupEventArgs e)
