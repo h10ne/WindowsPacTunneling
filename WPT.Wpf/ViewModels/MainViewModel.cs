@@ -92,6 +92,7 @@ public sealed class MainViewModel : ViewModelBase
     private bool _amneziaBoxUpdateAvailable;
     private string _amneziaBoxUpdateStatus = "Нажмите «Проверить обновления», чтобы узнать актуальность wireproxy (AmneziaWG).";
     private bool _isAppUpdateAvailable;
+    private int _componentUpdateOperations;
     private string _appUpdateStatus = string.Empty;
     private string _latestAppVersionLabel = string.Empty;
     private readonly string _appVersionLabel = AppVersion.CurrentLabel;
@@ -170,7 +171,7 @@ public sealed class MainViewModel : ViewModelBase
         DownloadZapretUpdateCommand = new RelayCommand(async () => await DownloadZapretUpdateAsync(), () => !IsBusy && CanDownloadZapretUpdate);
         DownloadSingBoxUpdateCommand = new RelayCommand(async () => await DownloadSingBoxUpdateAsync(), () => !IsBusy && CanDownloadSingBoxUpdate);
         DownloadAmneziaBoxUpdateCommand = new RelayCommand(async () => await DownloadAmneziaBoxUpdateAsync(), () => !IsBusy && CanDownloadAmneziaBoxUpdate);
-        InstallAppUpdateCommand = new RelayCommand(async () => await InstallAppUpdateAsync(), () => !IsBusy && IsAppUpdateAvailable);
+        InstallAppUpdateCommand = new RelayCommand(async () => await InstallAppUpdateAsync(), () => CanInstallAppUpdate);
         OpenSettingsForUpdateCommand = new RelayCommand(OpenSettingsForUpdate);
         AppUpdateStatus = $"Текущая версия: {AppVersionLabel}.";
 
@@ -181,7 +182,7 @@ public sealed class MainViewModel : ViewModelBase
         {
             try
             {
-                await _domainListService.EnsureUpdatedAsync();
+                await RunComponentUpdateAsync(() => _domainListService.EnsureUpdatedAsync()).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -614,6 +615,7 @@ public sealed class MainViewModel : ViewModelBase
                     OnPropertyChanged(nameof(IsProcessModeEditingEnabled));
                     OnPropertyChanged(nameof(IsBypassEditingEnabled));
                     OnPropertyChanged(nameof(IsTgWsProxyPortEditingEnabled));
+                    OnPropertyChanged(nameof(CanInstallAppUpdate));
                     NotifyBypassCommandState();
                     RelayCommand.RaiseAllCanExecuteChanged();
                 }
@@ -1051,10 +1053,16 @@ public sealed class MainViewModel : ViewModelBase
             if (SetProperty(ref _isAppUpdateAvailable, value))
             {
                 OnPropertyChanged(nameof(IsAnyUpdateAvailable));
+                OnPropertyChanged(nameof(CanInstallAppUpdate));
                 RelayCommand.RaiseAllCanExecuteChanged();
             }
         }
     }
+
+    public bool CanInstallAppUpdate =>
+        IsAppUpdateAvailable && !IsBusy && !IsUpdatingComponents;
+
+    private bool IsUpdatingComponents => Volatile.Read(ref _componentUpdateOperations) > 0;
 
     public bool IsAnyUpdateAvailable =>
         IsAppUpdateAvailable || CanDownloadZapretUpdate || CanDownloadSingBoxUpdate || CanDownloadAmneziaBoxUpdate;
@@ -2950,12 +2958,17 @@ public sealed class MainViewModel : ViewModelBase
             IsBusy = true;
         }
 
+        BeginComponentUpdate();
         SetFooterLog("Обновление списков...");
 
         try
         {
             await _domainListService.UpdateAllListsAsync().ConfigureAwait(false);
             SetFooterLog("Списки обновлены");
+        }
+        catch (OperationCanceledException) when (_isShutdown)
+        {
+            AppLog.Info("Обновление списков прервано при выходе из приложения");
         }
         catch (Exception ex)
         {
@@ -2973,11 +2986,48 @@ public sealed class MainViewModel : ViewModelBase
         }
         finally
         {
+            EndComponentUpdate();
+
             if (reEnableUi)
             {
                 await RunOnUiThreadAsync(() => IsBusy = false).ConfigureAwait(false);
             }
         }
+    }
+
+    private async Task RunComponentUpdateAsync(Func<Task> action)
+    {
+        BeginComponentUpdate();
+
+        try
+        {
+            await action().ConfigureAwait(false);
+        }
+        finally
+        {
+            EndComponentUpdate();
+        }
+    }
+
+    private void BeginComponentUpdate()
+    {
+        Interlocked.Increment(ref _componentUpdateOperations);
+        NotifyCanInstallAppUpdateChanged();
+    }
+
+    private void EndComponentUpdate()
+    {
+        Interlocked.Decrement(ref _componentUpdateOperations);
+        NotifyCanInstallAppUpdateChanged();
+    }
+
+    private void NotifyCanInstallAppUpdateChanged()
+    {
+        RunOnUiThread(() =>
+        {
+            OnPropertyChanged(nameof(CanInstallAppUpdate));
+            InstallAppUpdateCommand.RaiseCanExecuteChanged();
+        });
     }
 
     private async Task ShowPacAsync()
@@ -3126,7 +3176,7 @@ public sealed class MainViewModel : ViewModelBase
             return null;
         }
 
-        await _domainListService.EnsureUpdatedAsync().ConfigureAwait(false);
+        await RunComponentUpdateAsync(() => _domainListService.EnsureUpdatedAsync()).ConfigureAwait(false);
 
         var (domains, subnets) = await _domainListService.CollectEntriesAsync(
             _selectedListIds,
@@ -3187,18 +3237,23 @@ public sealed class MainViewModel : ViewModelBase
             UpdateAppSettingsPreferences();
             ApplyTabVisibilitySettings();
             SettingsService.Save(_settings);
-            StartupService.SetEnabled(StartWithWindows, RunAsAdministrator);
-            SetFooterLog("Настройки сохранены");
-            MessageBox.Show(
-                "Настройки сохранены.",
-                "Готово",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
             AppLog.Error(ex, "Ошибка сохранения настроек");
-            MessageBox.Show(ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+            SetFooterLog($"Не удалось сохранить настройки: {ex.Message}");
+            return;
+        }
+
+        try
+        {
+            StartupService.SetEnabled(StartWithWindows, RunAsAdministrator);
+            SetFooterLog("Настройки сохранены");
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error(ex, "Ошибка настройки автозапуска");
+            SetFooterLog($"Настройки сохранены, но автозапуск не настроен: {ex.Message}");
         }
     }
 
@@ -3220,11 +3275,24 @@ public sealed class MainViewModel : ViewModelBase
 
     private async Task CheckAllUpdatesAsync(bool silent)
     {
-        await Task.WhenAll(
-            CheckAppUpdateAsync(silent),
-            CheckZapretUpdateAsync(silent),
-            CheckSingBoxUpdateAsync(silent),
-            CheckAmneziaBoxUpdateAsync(silent)).ConfigureAwait(false);
+        var tasks = new List<Task> { CheckAppUpdateAsync(silent) };
+
+        if (ZapretInstaller.IsInstalled())
+        {
+            tasks.Add(CheckZapretUpdateAsync(silent));
+        }
+
+        if (SingBoxInstaller.IsInstalled())
+        {
+            tasks.Add(CheckSingBoxUpdateAsync(silent));
+        }
+
+        if (AwgWireproxyInstaller.IsInstalled())
+        {
+            tasks.Add(CheckAmneziaBoxUpdateAsync(silent));
+        }
+
+        await Task.WhenAll(tasks).ConfigureAwait(false);
     }
 
     private async Task CheckAppUpdateManualAsync()
@@ -3277,7 +3345,7 @@ public sealed class MainViewModel : ViewModelBase
 
     private async Task InstallAppUpdateAsync()
     {
-        if (!IsAppUpdateAvailable)
+        if (!CanInstallAppUpdate)
         {
             return;
         }
@@ -3293,6 +3361,16 @@ public sealed class MainViewModel : ViewModelBase
 
         if (confirm != MessageBoxResult.Yes)
         {
+            return;
+        }
+
+        if (IsUpdatingComponents)
+        {
+            MessageBox.Show(
+                "Сейчас обновляются компоненты (списки, zapret, sing-box или wireproxy). Дождитесь завершения и повторите.",
+                "Обновление",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
             return;
         }
 
@@ -3365,7 +3443,7 @@ public sealed class MainViewModel : ViewModelBase
             RunOnUiThread(() =>
             {
                 ZapretUpdateStatus = result.Message;
-                CanDownloadZapretUpdate = result.UpdateAvailable;
+                CanDownloadZapretUpdate = result.IsInstalled && result.UpdateAvailable;
 
                 if (!silent)
                 {
@@ -3404,6 +3482,7 @@ public sealed class MainViewModel : ViewModelBase
         }
 
         IsBusy = true;
+        BeginComponentUpdate();
 
         try
         {
@@ -3453,6 +3532,7 @@ public sealed class MainViewModel : ViewModelBase
         }
         finally
         {
+            EndComponentUpdate();
             IsBusy = false;
         }
     }
@@ -3490,7 +3570,7 @@ public sealed class MainViewModel : ViewModelBase
             RunOnUiThread(() =>
             {
                 SingBoxUpdateStatus = result.Message;
-                CanDownloadSingBoxUpdate = result.UpdateAvailable;
+                CanDownloadSingBoxUpdate = result.IsInstalled && result.UpdateAvailable;
 
                 if (!silent)
                 {
@@ -3529,6 +3609,7 @@ public sealed class MainViewModel : ViewModelBase
         }
 
         IsBusy = true;
+        BeginComponentUpdate();
 
         try
         {
@@ -3574,6 +3655,7 @@ public sealed class MainViewModel : ViewModelBase
         }
         finally
         {
+            EndComponentUpdate();
             IsBusy = false;
         }
     }
@@ -3611,7 +3693,7 @@ public sealed class MainViewModel : ViewModelBase
             RunOnUiThread(() =>
             {
                 AmneziaBoxUpdateStatus = result.Message;
-                CanDownloadAmneziaBoxUpdate = result.UpdateAvailable;
+                CanDownloadAmneziaBoxUpdate = result.IsInstalled && result.UpdateAvailable;
 
                 if (!silent)
                 {
@@ -3650,6 +3732,7 @@ public sealed class MainViewModel : ViewModelBase
         }
 
         IsBusy = true;
+        BeginComponentUpdate();
 
         try
         {
@@ -3695,6 +3778,7 @@ public sealed class MainViewModel : ViewModelBase
         }
         finally
         {
+            EndComponentUpdate();
             IsBusy = false;
         }
     }

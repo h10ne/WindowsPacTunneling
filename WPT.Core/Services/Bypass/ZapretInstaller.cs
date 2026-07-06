@@ -43,21 +43,19 @@ public static class ZapretInstaller
 
     public static async Task<ZapretUpdateCheckResult> CheckForUpdateAsync(CancellationToken cancellationToken = default)
     {
-        using var httpClient = CreateHttpClient();
-        var release = await FetchLatestReleaseAsync(httpClient, cancellationToken);
-        var latestVersion = release.TagName;
-        var installedVersion = GetInstalledVersion();
-        var isInstalled = IsInstalled();
-
-        if (!isInstalled)
+        if (!IsInstalled())
         {
             return new ZapretUpdateCheckResult(
                 false,
-                true,
+                false,
                 null,
-                latestVersion,
-                $"Zapret не установлен. Доступна версия {latestVersion}.");
+                string.Empty,
+                "Zapret не установлен.");
         }
+
+        var release = await FetchLatestReleaseAsync(cancellationToken);
+        var latestVersion = release.TagName;
+        var installedVersion = GetInstalledVersion();
 
         if (!string.IsNullOrWhiteSpace(installedVersion)
             && installedVersion.Equals(latestVersion, StringComparison.OrdinalIgnoreCase))
@@ -91,11 +89,25 @@ public static class ZapretInstaller
 
     public static async Task InstallOrUpdateAsync(IProgress<string>? progress, CancellationToken cancellationToken)
     {
+        try
+        {
+            await InstallOrUpdateCoreAsync(progress, cancellationToken);
+        }
+        catch (Exception ex) when (ComponentDownloadScriptLauncher.IsDownloadRelated(ex))
+        {
+            throw ComponentDownloadScriptLauncher.CreateFailureException(
+                ComponentDownloadScriptKind.Zapret,
+                "zapret",
+                ex);
+        }
+    }
+
+    private static async Task InstallOrUpdateCoreAsync(IProgress<string>? progress, CancellationToken cancellationToken)
+    {
         progress?.Report("Загрузка zapret...");
         AppPaths.EnsureRoot();
 
-        using var httpClient = CreateHttpClient();
-        var release = await FetchLatestReleaseAsync(httpClient, cancellationToken);
+        var release = await FetchLatestReleaseAsync(cancellationToken);
         var asset = FindReleaseAsset(release);
 
         var zipPath = Path.Combine(AppPaths.Root, asset.Name);
@@ -105,6 +117,7 @@ public static class ZapretInstaller
         {
             progress?.Report($"Скачивание {asset.Name}...");
 
+            using var httpClient = CreateHttpClient();
             await using (var response = await httpClient.GetStreamAsync(asset.BrowserDownloadUrl, cancellationToken))
             await using (var file = File.Create(zipPath))
             {
@@ -157,8 +170,9 @@ public static class ZapretInstaller
         return httpClient;
     }
 
-    private static async Task<GitHubRelease> FetchLatestReleaseAsync(HttpClient httpClient, CancellationToken cancellationToken)
+    private static async Task<GitHubRelease> FetchLatestReleaseAsync(CancellationToken cancellationToken)
     {
+        using var httpClient = CreateHttpClient();
         var release = await httpClient.GetFromJsonAsync<GitHubRelease>(
             $"https://api.github.com/repos/{Repository}/releases/latest",
             cancellationToken);

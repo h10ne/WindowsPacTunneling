@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Net.Http;
 using System.Net.Http.Json;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -16,8 +17,7 @@ public static class AppUpdateService
 
     public static async Task<AppUpdateCheckResult> CheckForUpdateAsync(CancellationToken cancellationToken = default)
     {
-        using var httpClient = CreateHttpClient();
-        var release = await FetchLatestReleaseAsync(httpClient, cancellationToken);
+        var release = await FetchLatestReleaseAsync(cancellationToken);
         var latestVersion = AppVersion.ParseTag(release.TagName);
         var currentVersion = AppVersion.Current;
         var currentLabel = AppVersion.CurrentLabel;
@@ -43,10 +43,26 @@ public static class AppUpdateService
         IProgress<string>? progress,
         CancellationToken cancellationToken)
     {
+        try
+        {
+            return await DownloadLatestReleaseCoreAsync(progress, cancellationToken);
+        }
+        catch (Exception ex) when (ComponentDownloadScriptLauncher.IsDownloadRelated(ex))
+        {
+            throw ComponentDownloadScriptLauncher.CreateFailureException(
+                ComponentDownloadScriptKind.AppUpdate,
+                "обновление приложения",
+                ex);
+        }
+    }
+
+    private static async Task<string> DownloadLatestReleaseCoreAsync(
+        IProgress<string>? progress,
+        CancellationToken cancellationToken)
+    {
         progress?.Report("Проверка последней версии...");
 
-        using var httpClient = CreateHttpClient();
-        var release = await FetchLatestReleaseAsync(httpClient, cancellationToken);
+        var release = await FetchLatestReleaseAsync(cancellationToken);
         var asset = FindReleaseAsset(release);
         var downloadDirectory = Path.Combine(Path.GetTempPath(), "wpt-update");
         Directory.CreateDirectory(downloadDirectory);
@@ -59,6 +75,7 @@ public static class AppUpdateService
 
         progress?.Report($"Скачивание {asset.Name}...");
 
+        using var httpClient = CreateHttpClient();
         await using (var response = await httpClient.GetStreamAsync(asset.BrowserDownloadUrl, cancellationToken))
         await using (var file = File.Create(downloadPath))
         {
@@ -106,8 +123,9 @@ public static class AppUpdateService
         return httpClient;
     }
 
-    private static async Task<GitHubRelease> FetchLatestReleaseAsync(HttpClient httpClient, CancellationToken cancellationToken)
+    private static async Task<GitHubRelease> FetchLatestReleaseAsync(CancellationToken cancellationToken)
     {
+        using var httpClient = CreateHttpClient();
         var release = await httpClient.GetFromJsonAsync<GitHubRelease>(
             $"https://api.github.com/repos/{Repository}/releases/latest",
             cancellationToken);

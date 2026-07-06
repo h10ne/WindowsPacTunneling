@@ -58,6 +58,8 @@ public static class AppPaths
     public static string BundledRedirectorDirectory =>
         Path.Combine(AppContext.BaseDirectory, "ThirdParty", "Netch");
 
+    public static string ScriptsDirectory => Path.Combine(Root, "scripts");
+
     public static string ZapretDirectory => Path.Combine(Root, "zapret");
 
     public static string ZapretBinDirectory => Path.Combine(ZapretDirectory, "bin");
@@ -75,6 +77,7 @@ public static class AppPaths
         Directory.CreateDirectory(BinDirectory);
         Directory.CreateDirectory(VpnConfigsDirectory);
         Directory.CreateDirectory(LogsDirectory);
+        Directory.CreateDirectory(ScriptsDirectory);
     }
 
 

@@ -36,21 +36,19 @@ public static class AwgWireproxyInstaller
 
     public static async Task<SingBoxUpdateCheckResult> CheckForUpdateAsync(CancellationToken cancellationToken = default)
     {
-        using var httpClient = CreateHttpClient();
-        var release = await FetchLatestReleaseAsync(httpClient, cancellationToken);
-        var latestVersion = release.TagName;
-        var installedVersion = GetInstalledVersion();
-        var isInstalled = IsInstalled();
-
-        if (!isInstalled)
+        if (!IsInstalled())
         {
             return new SingBoxUpdateCheckResult(
                 false,
-                true,
+                false,
                 null,
-                latestVersion,
-                $"Wireproxy (AmneziaWG) не установлен. Доступна версия {latestVersion}.");
+                string.Empty,
+                "Wireproxy (AmneziaWG) не установлен.");
         }
+
+        var release = await FetchLatestReleaseAsync(cancellationToken);
+        var latestVersion = release.TagName;
+        var installedVersion = GetInstalledVersion();
 
         if (!string.IsNullOrWhiteSpace(installedVersion)
             && VersionsEqual(installedVersion, latestVersion))
@@ -84,12 +82,26 @@ public static class AwgWireproxyInstaller
 
     public static async Task InstallOrUpdateAsync(IProgress<string>? progress, CancellationToken cancellationToken)
     {
+        try
+        {
+            await InstallOrUpdateCoreAsync(progress, cancellationToken);
+        }
+        catch (Exception ex) when (ComponentDownloadScriptLauncher.IsDownloadRelated(ex))
+        {
+            throw ComponentDownloadScriptLauncher.CreateFailureException(
+                ComponentDownloadScriptKind.Wireproxy,
+                "wireproxy",
+                ex);
+        }
+    }
+
+    private static async Task InstallOrUpdateCoreAsync(IProgress<string>? progress, CancellationToken cancellationToken)
+    {
         progress?.Report("Загрузка wireproxy (AmneziaWG)...");
         AppPaths.EnsureRoot();
         Directory.CreateDirectory(AppPaths.BinDirectory);
 
-        using var httpClient = CreateHttpClient();
-        var release = await FetchLatestReleaseAsync(httpClient, cancellationToken);
+        var release = await FetchLatestReleaseAsync(cancellationToken);
         var asset = FindReleaseAsset(release);
         var archivePath = Path.Combine(AppPaths.BinDirectory, asset.Name);
         var extractDirectory = Path.Combine(AppPaths.BinDirectory, "awg-wireproxy-extract");
@@ -98,6 +110,7 @@ public static class AwgWireproxyInstaller
         {
             progress?.Report($"Скачивание {asset.Name}...");
 
+            using var httpClient = CreateHttpClient();
             await using (var response = await httpClient.GetStreamAsync(asset.BrowserDownloadUrl, cancellationToken))
             await using (var file = File.Create(archivePath))
             {
@@ -206,8 +219,9 @@ public static class AwgWireproxyInstaller
         return httpClient;
     }
 
-    private static async Task<GitHubRelease> FetchLatestReleaseAsync(HttpClient httpClient, CancellationToken cancellationToken)
+    private static async Task<GitHubRelease> FetchLatestReleaseAsync(CancellationToken cancellationToken)
     {
+        using var httpClient = CreateHttpClient();
         var release = await httpClient.GetFromJsonAsync<GitHubRelease>(
             $"https://api.github.com/repos/{Repository}/releases/latest",
             cancellationToken);

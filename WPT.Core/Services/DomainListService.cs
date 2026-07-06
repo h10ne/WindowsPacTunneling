@@ -7,27 +7,53 @@ namespace WPT.Core.Services;
 
 public sealed class DomainListService : IDisposable
 {
-    private const string BaseUrl = "https://raw.githubusercontent.com/itdoginfo/allow-domains/main/";
+    private static readonly string[] ListSourceBaseUrls =
+    [
+        "https://raw.githubusercontent.com/itdoginfo/allow-domains/main/",
+        "https://cdn.jsdelivr.net/gh/itdoginfo/allow-domains@main/"
+    ];
+
+    private static readonly string GitHubListBaseUrl = ListSourceBaseUrls[0];
+    private static readonly string MirrorListBaseUrl = ListSourceBaseUrls[1];
+
     private static readonly TimeSpan UpdateInterval = TimeSpan.FromDays(1);
 
     private readonly HttpClient _httpClient;
     private readonly string _cacheDirectory;
     private readonly string _lastUpdateFile;
     private readonly SemaphoreSlim _updateLock = new(1, 1);
+    private readonly CancellationTokenSource _disposeCts = new();
+    private int _disposeState;
+    private int _listSourceIndex;
 
     public DomainListService()
     {
-        var handler = new HttpClientHandler { UseProxy = false };
-        _httpClient = new HttpClient(handler)
-        {
-            Timeout = TimeSpan.FromMinutes(2)
-        };
-        _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("WindowPacTunneling/1.0");
-
+        _httpClient = CreateHttpClient();
         _cacheDirectory = AppPaths.ListsDirectory;
         _lastUpdateFile = Path.Combine(_cacheDirectory, ".last-update");
 
         AppPaths.EnsureRoot();
+    }
+
+    private static HttpClient CreateHttpClient()
+    {
+        var handler = new SocketsHttpHandler
+        {
+            AutomaticDecompression = DecompressionMethods.All,
+            EnableMultipleHttp2Connections = true
+        };
+
+        var client = new HttpClient(handler)
+        {
+            Timeout = TimeSpan.FromMinutes(2),
+            DefaultRequestVersion = HttpVersion.Version20,
+            DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrLower
+        };
+        client.DefaultRequestHeaders.UserAgent.ParseAdd(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
+        client.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "*/*");
+
+        return client;
     }
 
     public event EventHandler<string>? StatusChanged;
@@ -44,7 +70,11 @@ public sealed class DomainListService : IDisposable
 
     public async Task UpdateAllListsAsync(CancellationToken cancellationToken = default)
     {
-        await _updateLock.WaitAsync(cancellationToken);
+        ThrowIfDisposed();
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _disposeCts.Token);
+        var token = linkedCts.Token;
+
+        await _updateLock.WaitAsync(token);
 
         try
         {
@@ -55,33 +85,29 @@ public sealed class DomainListService : IDisposable
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-            var failed = 0;
-
             foreach (var file in files)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-
-                try
-                {
-                    await DownloadFileAsync(file, cancellationToken);
-                }
-                catch (Exception ex)
-                {
-                    failed++;
-                    AppLog.Error(ex, $"Ошибка загрузки списка {file}");
-                    ReportStatus($"Ошибка загрузки {file}: {ex.Message}");
-                }
+                token.ThrowIfCancellationRequested();
+                await DownloadFileAsync(file, token);
             }
 
-            await File.WriteAllTextAsync(_lastUpdateFile, DateTime.UtcNow.ToString("O"), cancellationToken);
+            await File.WriteAllTextAsync(_lastUpdateFile, DateTime.UtcNow.ToString("O"), token);
 
-            ReportStatus(failed == 0
-                ? "Списки обновлены"
-                : $"Списки обновлены с ошибками: {failed}");
+            ReportStatus("Списки обновлены");
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error(ex, "Обновление списков прервано");
+            ReportStatus($"Обновление списков прервано: {ex.Message}");
+            throw;
         }
         finally
         {
-            _updateLock.Release();
+            ReleaseUpdateLock();
         }
     }
 
@@ -166,7 +192,45 @@ public sealed class DomainListService : IDisposable
 
     private async Task DownloadFileAsync(string relativePath, CancellationToken cancellationToken)
     {
-        var url = BaseUrl + relativePath.Replace('\\', '/');
+        var normalizedPath = relativePath.Replace('\\', '/');
+
+        if (_listSourceIndex == 1)
+        {
+            await DownloadFileFromSourceAsync(MirrorListBaseUrl, relativePath, normalizedPath, cancellationToken);
+            return;
+        }
+
+        try
+        {
+            await DownloadFileFromSourceAsync(GitHubListBaseUrl, relativePath, normalizedPath, cancellationToken);
+        }
+        catch (Exception githubError)
+        {
+            AppLog.Warning(githubError, $"Загрузка {relativePath} с GitHub не удалась, пробуем jsDelivr...");
+
+            try
+            {
+                await DownloadFileFromSourceAsync(MirrorListBaseUrl, relativePath, normalizedPath, cancellationToken);
+                _listSourceIndex = 1;
+                AppLog.Info($"Список {relativePath} загружен через jsDelivr. Дальнейшая загрузка в этом сеансе — только через jsDelivr");
+            }
+            catch (Exception mirrorError)
+            {
+                var message = $"Не удалось загрузить {relativePath}: GitHub и jsDelivr недоступны";
+                throw new InvalidOperationException(message, mirrorError);
+            }
+        }
+    }
+
+    private Task DownloadFileFromSourceAsync(
+        string baseUrl,
+        string relativePath,
+        string normalizedPath,
+        CancellationToken cancellationToken) =>
+        DownloadFileFromUrlAsync(baseUrl + normalizedPath, relativePath, cancellationToken);
+
+    private async Task DownloadFileFromUrlAsync(string url, string relativePath, CancellationToken cancellationToken)
+    {
         var response = await _httpClient.GetAsync(url, cancellationToken);
         response.EnsureSuccessStatusCode();
 
@@ -185,18 +249,22 @@ public sealed class DomainListService : IDisposable
 
         if (!File.Exists(cachePath))
         {
-            await _updateLock.WaitAsync(cancellationToken);
+            ThrowIfDisposed();
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _disposeCts.Token);
+            var token = linkedCts.Token;
+
+            await _updateLock.WaitAsync(token);
 
             try
             {
                 if (!File.Exists(cachePath))
                 {
-                    await DownloadFileAsync(relativePath, cancellationToken);
+                    await DownloadFileAsync(relativePath, token);
                 }
             }
             finally
             {
-                _updateLock.Release();
+                ReleaseUpdateLock();
             }
         }
 
@@ -231,10 +299,52 @@ public sealed class DomainListService : IDisposable
 
     private void ReportStatus(string message) => StatusChanged?.Invoke(this, message);
 
+    private void ThrowIfDisposed()
+    {
+        if (Volatile.Read(ref _disposeState) != 0)
+        {
+            throw new ObjectDisposedException(nameof(DomainListService));
+        }
+    }
+
+    private void ReleaseUpdateLock()
+    {
+        try
+        {
+            _updateLock.Release();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+    }
+
     public void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposeState, 1) != 0)
+        {
+            return;
+        }
+
+        _disposeCts.Cancel();
+
+        try
+        {
+            if (!_updateLock.Wait(TimeSpan.FromSeconds(30)))
+            {
+                AppLog.Warning("Таймаут ожидания завершения обновления списков при выходе");
+            }
+            else
+            {
+                ReleaseUpdateLock();
+            }
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+
         _httpClient.Dispose();
         _updateLock.Dispose();
+        _disposeCts.Dispose();
     }
 }
 

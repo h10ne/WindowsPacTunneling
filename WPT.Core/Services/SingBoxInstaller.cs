@@ -34,21 +34,19 @@ public static class SingBoxInstaller
 
     public static async Task<SingBoxUpdateCheckResult> CheckForUpdateAsync(CancellationToken cancellationToken = default)
     {
-        using var httpClient = CreateHttpClient();
-        var release = await FetchLatestReleaseAsync(httpClient, cancellationToken);
-        var latestVersion = release.TagName;
-        var installedVersion = GetInstalledVersion();
-        var isInstalled = IsInstalled();
-
-        if (!isInstalled)
+        if (!IsInstalled())
         {
             return new SingBoxUpdateCheckResult(
                 false,
-                true,
+                false,
                 null,
-                latestVersion,
-                $"Sing-box не установлен. Доступна версия {latestVersion}.");
+                string.Empty,
+                "Sing-box не установлен.");
         }
+
+        var release = await FetchLatestReleaseAsync(cancellationToken);
+        var latestVersion = release.TagName;
+        var installedVersion = GetInstalledVersion();
 
         if (!string.IsNullOrWhiteSpace(installedVersion)
             && VersionsEqual(installedVersion, latestVersion))
@@ -97,7 +95,22 @@ public static class SingBoxInstaller
         }
 
         progress?.Report($"Загрузка sing-box {ProcessModeReleaseTag} для Process Mode...");
-        await InstallReleaseAsync(ProcessModeReleaseTag, ProcessModeExecutablePath, AppPaths.ProcessModeSingBoxVersionFile, progress, cancellationToken);
+        try
+        {
+            await InstallReleaseAsync(
+                ProcessModeReleaseTag,
+                ProcessModeExecutablePath,
+                AppPaths.ProcessModeSingBoxVersionFile,
+                progress,
+                cancellationToken);
+        }
+        catch (Exception ex) when (ComponentDownloadScriptLauncher.IsDownloadRelated(ex))
+        {
+            throw ComponentDownloadScriptLauncher.CreateFailureException(
+                ComponentDownloadScriptKind.SingBoxProcessMode,
+                "sing-box для Process Mode",
+                ex);
+        }
     }
 
     public static bool IsProcessModeInstalled() =>
@@ -109,9 +122,23 @@ public static class SingBoxInstaller
         AppPaths.EnsureRoot();
         Directory.CreateDirectory(AppPaths.BinDirectory);
 
-        using var httpClient = CreateHttpClient();
-        var release = await FetchLatestReleaseAsync(httpClient, cancellationToken);
-        await InstallReleaseAsync(release.TagName, ExecutablePath, AppPaths.SingBoxVersionFile, progress, cancellationToken);
+        try
+        {
+            var release = await FetchLatestReleaseAsync(cancellationToken);
+            await InstallReleaseAsync(
+                release.TagName,
+                ExecutablePath,
+                AppPaths.SingBoxVersionFile,
+                progress,
+                cancellationToken);
+        }
+        catch (Exception ex) when (ComponentDownloadScriptLauncher.IsDownloadRelated(ex))
+        {
+            throw ComponentDownloadScriptLauncher.CreateFailureException(
+                ComponentDownloadScriptKind.SingBox,
+                "sing-box",
+                ex);
+        }
     }
 
     private static async Task InstallReleaseAsync(
@@ -124,8 +151,7 @@ public static class SingBoxInstaller
         AppPaths.EnsureRoot();
         Directory.CreateDirectory(AppPaths.BinDirectory);
 
-        using var httpClient = CreateHttpClient();
-        var release = await FetchReleaseByTagAsync(httpClient, releaseTag, cancellationToken);
+        var release = await FetchReleaseByTagAsync(releaseTag, cancellationToken);
         var asset = FindReleaseAsset(release);
         var zipPath = Path.Combine(AppPaths.BinDirectory, asset.Name);
         var extractDirectory = Path.Combine(AppPaths.BinDirectory, $"extract-{Guid.NewGuid():N}");
@@ -134,6 +160,7 @@ public static class SingBoxInstaller
         {
             progress?.Report($"Скачивание {asset.Name}...");
 
+            using var httpClient = CreateHttpClient();
             await using (var response = await httpClient.GetStreamAsync(asset.BrowserDownloadUrl, cancellationToken))
             await using (var file = File.Create(zipPath))
             {
@@ -274,8 +301,9 @@ public static class SingBoxInstaller
         return httpClient;
     }
 
-    private static async Task<GitHubRelease> FetchLatestReleaseAsync(HttpClient httpClient, CancellationToken cancellationToken)
+    private static async Task<GitHubRelease> FetchLatestReleaseAsync(CancellationToken cancellationToken)
     {
+        using var httpClient = CreateHttpClient();
         var release = await httpClient.GetFromJsonAsync<GitHubRelease>(
             $"https://api.github.com/repos/{Repository}/releases/latest",
             cancellationToken);
@@ -288,8 +316,9 @@ public static class SingBoxInstaller
         return release;
     }
 
-    private static async Task<GitHubRelease> FetchReleaseByTagAsync(HttpClient httpClient, string tag, CancellationToken cancellationToken)
+    private static async Task<GitHubRelease> FetchReleaseByTagAsync(string tag, CancellationToken cancellationToken)
     {
+        using var httpClient = CreateHttpClient();
         var release = await httpClient.GetFromJsonAsync<GitHubRelease>(
             $"https://api.github.com/repos/{Repository}/releases/tags/{tag}",
             cancellationToken);

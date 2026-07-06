@@ -75,9 +75,20 @@ public static class StartupService
 
     private static void CreateLogonTask(string exePath)
     {
-        var taskCommand = $"\"{exePath}\" {ElevatedArg}";
-        RunSchtasks($"/Create /TN \"{TaskName}\" /TR \"{taskCommand}\" /SC ONLOGON /RL HIGHEST /F");
+        var taskCommand = FormatSchtasksTaskCommand(exePath, ElevatedArg);
+        RunSchtasks(
+            "/Create",
+            "/TN", TaskName,
+            "/TR", taskCommand,
+            "/SC", "ONLOGON",
+            "/RL", "HIGHEST",
+            "/F");
     }
+
+    private static string FormatSchtasksTaskCommand(string exePath, string arguments) =>
+        exePath.Contains(' ')
+            ? $"\"{exePath}\" {arguments}"
+            : $"{exePath} {arguments}";
 
     private static void ClearScheduledTask()
     {
@@ -86,14 +97,14 @@ public static class StartupService
             return;
         }
 
-        TryRunSchtasks($"/Delete /TN \"{TaskName}\" /F");
+        TryRunSchtasks("/Delete", "/TN", TaskName, "/F");
     }
 
     private static bool HasScheduledTask()
     {
         try
         {
-            using var process = Process.Start(CreateSchtasksStartInfo($"/Query /TN \"{TaskName}\""));
+            using var process = Process.Start(CreateSchtasksStartInfo("/Query", "/TN", TaskName));
 
             return process?.WaitForExit(5000) == true && process.ExitCode == 0;
         }
@@ -103,7 +114,7 @@ public static class StartupService
         }
     }
 
-    private static void RunSchtasks(string arguments)
+    private static void RunSchtasks(params string[] arguments)
     {
         using var process = Process.Start(CreateSchtasksStartInfo(arguments))
             ?? throw new InvalidOperationException("Не удалось запустить schtasks.exe");
@@ -120,7 +131,7 @@ public static class StartupService
         throw new InvalidOperationException(NormalizeSchtasksError(message));
     }
 
-    private static bool TryRunSchtasks(string arguments)
+    private static bool TryRunSchtasks(params string[] arguments)
     {
         try
         {
@@ -145,11 +156,11 @@ public static class StartupService
         }
     }
 
-    private static ProcessStartInfo CreateSchtasksStartInfo(string arguments) =>
-        new()
+    private static ProcessStartInfo CreateSchtasksStartInfo(params string[] arguments)
+    {
+        var startInfo = new ProcessStartInfo
         {
             FileName = "schtasks.exe",
-            Arguments = arguments,
             UseShellExecute = false,
             CreateNoWindow = true,
             RedirectStandardOutput = true,
@@ -157,6 +168,14 @@ public static class StartupService
             StandardOutputEncoding = SchtasksOutputEncoding,
             StandardErrorEncoding = SchtasksOutputEncoding
         };
+
+        foreach (var argument in arguments)
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+
+        return startInfo;
+    }
 
     private static string NormalizeSchtasksError(string rawMessage)
     {
