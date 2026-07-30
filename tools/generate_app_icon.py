@@ -1,4 +1,4 @@
-"""Generate WPT broken-chain app icon (Fluent tray style, transparent background)."""
+"""Generate WPT broken-chain app icon (Fluent tile style)."""
 
 from __future__ import annotations
 
@@ -16,19 +16,21 @@ ICO_OUTPUT_PATHS = (
     WINUI_ASSETS / "AppIcon.ico",
 )
 
-PNG_OUTPUTS: dict[str, tuple[int, int]] = {
-    "StoreLogo.png": (50, 50),
-    "Square44x44Logo.scale-200.png": (88, 88),
-    "Square44x44Logo.targetsize-24_altform-unplated.png": (24, 24),
-    "Square44x44Logo.targetsize-48_altform-lightunplated.png": (48, 48),
-    "Square150x150Logo.scale-200.png": (300, 300),
-    "LockScreenLogo.scale-200.png": (48, 48),
-    "Wide310x150Logo.scale-200.png": (620, 300),
-    "SplashScreen.scale-200.png": (1240, 600),
+PNG_OUTPUTS: dict[str, tuple[int, int, bool]] = {
+    "StoreLogo.png": (50, 50, True),
+    "Square44x44Logo.scale-200.png": (88, 88, True),
+    "Square44x44Logo.targetsize-24_altform-unplated.png": (24, 24, False),
+    "Square44x44Logo.targetsize-48_altform-lightunplated.png": (48, 48, False),
+    "Square150x150Logo.scale-200.png": (300, 300, True),
+    "LockScreenLogo.scale-200.png": (48, 48, True),
+    "Wide310x150Logo.scale-200.png": (620, 300, True),
+    "SplashScreen.scale-200.png": (1240, 600, True),
 }
 
 BASE_SIZE = 16
 ICON_COLOR = (255, 255, 255, 255)
+BACKGROUND_COLOR = (43, 43, 43, 255)
+CORNER_RADIUS_RATIO = 0.22
 LINK_RADIUS = 3.15
 STROKE = 1.35
 GAP_DEGREES = 52.0
@@ -86,10 +88,18 @@ def draw_ring(
     draw.polygon(polygon, fill=ICON_COLOR)
 
 
-def render_icon(size: int) -> Image.Image:
+def draw_background(draw: ImageDraw.ImageDraw, size: int) -> None:
+    radius = max(2, int(size * CORNER_RADIUS_RATIO))
+    draw.rounded_rectangle((0, 0, size - 1, size - 1), radius=radius, fill=BACKGROUND_COLOR)
+
+
+def render_icon(size: int, *, with_background: bool) -> Image.Image:
     scale = size / BASE_SIZE
     image = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image, "RGBA")
+
+    if with_background:
+        draw_background(draw, size)
 
     radius = LINK_RADIUS * scale
     stroke = max(1.0, STROKE * scale)
@@ -102,9 +112,9 @@ def render_icon(size: int) -> Image.Image:
     return image
 
 
-def render_canvas(width: int, height: int) -> Image.Image:
+def render_canvas(width: int, height: int, *, with_background: bool) -> Image.Image:
     icon_size = min(width, height)
-    icon = render_icon(icon_size)
+    icon = render_icon(icon_size, with_background=with_background)
     canvas = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     offset = ((width - icon_size) // 2, (height - icon_size) // 2)
     canvas.alpha_composite(icon, offset)
@@ -113,20 +123,25 @@ def render_canvas(width: int, height: int) -> Image.Image:
 
 def save_icon(path: Path) -> None:
     sizes = (16, 20, 24, 32, 48, 64, 128, 256)
-    images = [render_icon(size) for size in sizes]
+    images = [render_icon(size, with_background=True) for size in sizes]
     path.parent.mkdir(parents=True, exist_ok=True)
     images[-1].save(
         path,
         format="ICO",
         sizes=[(size, size) for size in sizes],
         append_images=images[:-1],
+        bitmap_format="bmp",
     )
 
 
 def save_png_assets() -> None:
     WINUI_ASSETS.mkdir(parents=True, exist_ok=True)
-    for filename, (width, height) in PNG_OUTPUTS.items():
-        image = render_canvas(width, height) if width != height else render_icon(width)
+    for filename, (width, height, with_background) in PNG_OUTPUTS.items():
+        image = (
+            render_canvas(width, height, with_background=with_background)
+            if width != height
+            else render_icon(width, with_background=with_background)
+        )
         image.save(WINUI_ASSETS / filename, format="PNG")
         print(f"Saved {WINUI_ASSETS / filename}")
 

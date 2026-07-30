@@ -9,10 +9,10 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <ApplicationIcon>Resources\app.ico</ApplicationIcon>
         <RootNamespace>WPT.Wpf</RootNamespace>
-        <AssemblyName>WPT</AssemblyName>
+        <AssemblyName>WPT WPF</AssemblyName>
         <Product>WPT</Product>
         <AssemblyTitle>WPT</AssemblyTitle>
-        <Version>1.2.4</Version>
+        <Version>1.3.0</Version>
     </PropertyGroup>
 
     <ItemGroup>

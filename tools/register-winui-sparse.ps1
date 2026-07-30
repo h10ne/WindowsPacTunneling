@@ -1,13 +1,13 @@
 param(
-    [string]$AppDir = (Resolve-Path (Join-Path $PSScriptRoot "..\release-winui")).Path
+    [string]$AppDir = (Resolve-Path (Join-Path $PSScriptRoot "..\release")).Path
 )
 
 $ErrorActionPreference = "Stop"
 $packageName = "B41D0BF2-9C32-4CE0-A4C1-12AD47C95613"
 $manifestPath = Join-Path $AppDir "AppxManifest.xml"
 
-if (-not (Test-Path (Join-Path $AppDir "WPT.WinUI.exe"))) {
-    throw "WPT.WinUI.exe not found in '$AppDir'. Publish WinUI first."
+if (-not (Test-Path (Join-Path $AppDir "WPT.exe"))) {
+    throw "WPT.exe not found in '$AppDir'. Publish WinUI first."
 }
 
 $existing = Get-AppxPackage -Name $packageName -ErrorAction SilentlyContinue
@@ -16,7 +16,7 @@ if ($existing) {
 }
 
 Copy-Item (Join-Path $PSScriptRoot "..\WPT.WinUI\Package.appxmanifest") $manifestPath -Force
-$manifest = (Get-Content $manifestPath -Raw).Replace('$targetnametoken$.exe', 'WPT.WinUI.exe').Replace('$targetentrypoint$', 'Windows.FullTrustApplication')
+$manifest = (Get-Content $manifestPath -Raw).Replace('$targetnametoken$.exe', 'WPT.exe').Replace('$targetentrypoint$', 'Windows.FullTrustApplication')
 Set-Content $manifestPath -Value $manifest -Encoding UTF8
 
 $makePri = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter "makepri.exe" |

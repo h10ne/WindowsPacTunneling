@@ -53,6 +53,7 @@ CodeCoverage/
 _netch_ref/
 _netch_dl/
 _tools/
+tools/rcedit.exe
 
 # MSBuild Binary and Structured Log
 *.binlog

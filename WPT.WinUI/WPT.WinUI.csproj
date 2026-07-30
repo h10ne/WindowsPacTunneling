@@ -4,7 +4,7 @@
     <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
     <RootNamespace>WPT.WinUI</RootNamespace>
-    <AssemblyName>WPT.WinUI</AssemblyName>
+    <AssemblyName>WPT</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <Platforms>x64</Platforms>
@@ -17,7 +17,7 @@
     <DisablePackagingProjectCapability>true</DisablePackagingProjectCapability>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Version>1.2.4</Version>
+    <Version>1.3.0</Version>
     <Product>WPT</Product>
     <AssemblyTitle>WPT</AssemblyTitle>
   </PropertyGroup>
