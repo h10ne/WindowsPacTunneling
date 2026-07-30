@@ -2,7 +2,7 @@ using System.Drawing;
 using System.Windows;
 using System.Windows.Forms;
 using WPT.Core;
-using WPT.Wpf.ViewModels;
+using WPT.ViewModels;
 using Application = System.Windows.Application;
 
 namespace WPT.Wpf.Services;

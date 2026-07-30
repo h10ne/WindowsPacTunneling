@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Threading;
 using WPT.Core.Services;
+using WPT.ViewModels.Abstractions;
 using WPT.Wpf.Controls;
 using WPT.Wpf.Services;
 
@@ -30,6 +31,7 @@ public partial class App : System.Windows.Application
         }
 
         AppLog.Initialize();
+        UiHostContext.Initialize(new WpfUiHost());
         RegisterGlobalExceptionHandlers();
 
         if (!IsElevatedLaunch(e.Args))

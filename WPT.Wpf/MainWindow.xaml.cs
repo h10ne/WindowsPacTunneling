@@ -8,7 +8,7 @@ using WPT.Wpf.Services;
 
 using WPT.Wpf.Ui;
 
-using WPT.Wpf.ViewModels;
+using WPT.ViewModels;
 
 
 

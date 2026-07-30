@@ -17,6 +17,7 @@
 
     <ItemGroup>
         <ProjectReference Include="..\WPT.Core\WPT.Core.csproj" />
+        <ProjectReference Include="..\WPT.ViewModels\WPT.ViewModels.csproj" />
     </ItemGroup>
 
     <ItemGroup>

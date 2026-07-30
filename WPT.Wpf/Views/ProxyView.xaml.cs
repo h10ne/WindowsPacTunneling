@@ -1,4 +1,4 @@
-using WPT.Wpf.ViewModels;
+using WPT.ViewModels;
 
 namespace WPT.Wpf.Views;
 
