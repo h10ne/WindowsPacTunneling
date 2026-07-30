@@ -83,4 +83,8 @@ public sealed class AppSettings
     public bool ShowProcessModeTab { get; set; } = true;
 
     public bool ShowBypassTab { get; set; } = true;
+
+    public int WindowWidth { get; set; }
+
+    public int WindowHeight { get; set; }
 }

@@ -1,0 +1,103 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="WPT.WinUI.Pages.ProcessModePage"
+    x:Name="PageRoot"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:ctrl="using:WPT.WinUI.Controls">
+    <Grid Padding="24,16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="16">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="Конфигурация VLESS" Style="{StaticResource CaptionText}" />
+                    <ctrl:ProxyConfigSelector ItemsSource="{Binding ProcessModeProxyConfigs}"
+                                              SelectedItem="{Binding SelectedProcessModeProxyConfig, Mode=TwoWay}"
+                                              DeleteCommand="{Binding DeleteSavedProxyConfigCommand}"
+                                              EditingEnabled="{Binding IsProcessModeEditingEnabled}" />
+                </StackPanel>
+                <StackPanel Spacing="4">
+                    <TextBlock Text="Локальный порт" Style="{StaticResource CaptionText}" />
+                    <TextBox Text="{Binding ProcessModePort, Mode=TwoWay}"
+                             Width="100"
+                             HorizontalAlignment="Left"
+                             IsEnabled="{Binding IsProcessModeEditingEnabled}"
+                             PlaceholderText="20808" />
+                </StackPanel>
+                <Expander Style="{StaticResource FullWidthExpander}" IsExpanded="True">
+                    <Expander.Header>
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <TextBlock Text="Списки приложений" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding ProcessModeApplications.Count, Mode=OneWay}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                            <TextBlock Text="Имена процессов (.exe), трафик которых направляется через туннель"
+                                       Style="{StaticResource CaptionText}"
+                                       Margin="0,2,0,0" />
+                        </StackPanel>
+                    </Expander.Header>
+                    <StackPanel Style="{StaticResource EditableListInsets}" Spacing="8">
+                        <Grid ColumnSpacing="8" HorizontalAlignment="Stretch">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox Text="{Binding NewProcessModeApp, Mode=TwoWay}"
+                                     IsEnabled="{Binding IsProcessModeEditingEnabled}"
+                                     PlaceholderText="Название процесса"
+                                     HorizontalAlignment="Stretch" />
+                            <Button Grid.Column="1"
+                                    Content="+"
+                                    Style="{StaticResource CompactAddButton}"
+                                    IsEnabled="{Binding IsProcessModeEditingEnabled}"
+                                    Command="{Binding AddProcessModeAppCommand}" />
+                        </Grid>
+                        <ItemsControl Style="{StaticResource FullWidthItemsControl}"
+                                      ItemsSource="{Binding ProcessModeApplications}">
+                            <ItemsControl.ItemContainerStyle>
+                                <Style TargetType="ContentPresenter" BasedOn="{StaticResource RemovableListItemPresenter}" />
+                            </ItemsControl.ItemContainerStyle>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Style="{StaticResource ListTileBorder}" Margin="0,0,0,4">
+                                        <Grid MinHeight="32">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding}"
+                                                       VerticalAlignment="Center"
+                                                       Margin="8,0,8,0"
+                                                       TextTrimming="CharacterEllipsis" />
+                                            <Button Grid.Column="1"
+                                                    Style="{StaticResource ListItemRemoveButton}"
+                                                    Command="{Binding DataContext.RemoveProcessModeAppCommand, ElementName=PageRoot}"
+                                                    CommandParameter="{Binding}"
+                                                    Visibility="{Binding DataContext.IsProcessModeRunning, ElementName=PageRoot, Converter={StaticResource BoolToVis}, ConverterParameter=Inverse}" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Expander>
+                <Border Style="{StaticResource CardBorder}"
+                        Visibility="{Binding IsProcessModeInfoVisible, Converter={StaticResource BoolToVis}}">
+                    <TextBlock Text="{Binding ProcessModeInfoText}"
+                               TextWrapping="Wrap"
+                               FontSize="12" />
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+        <Border Grid.Row="1" Style="{StaticResource PageActionBar}">
+            <Button Content="{Binding ProcessModeToggleLabel}"
+                    Command="{Binding ToggleProcessModeCommand}"
+                    MinWidth="140"
+                    Style="{StaticResource AccentButtonStyle}" />
+        </Border>
+    </Grid>
+</Page>

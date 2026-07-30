@@ -1,0 +1,140 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="WPT.WinUI.Pages.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid Padding="24,16">
+        <Pivot SelectedIndex="{Binding SettingsTabIndex, Mode=TwoWay}"
+               Margin="-12,0,0,0">
+            <PivotItem Header="Общие">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
+                        <StackPanel Spacing="8" Margin="0,12,0,0">
+                            <TextBlock Text="Запуск" Style="{StaticResource SectionTitle}" />
+                            <CheckBox Content="Запускать вместе со стартом системы"
+                                      IsChecked="{Binding StartWithWindows, Mode=TwoWay}" />
+                            <CheckBox Content="Запускать от имени администратора"
+                                      IsChecked="{Binding RunAsAdministrator, Mode=TwoWay}" />
+                            <CheckBox Content="Запускать прокси со стартом приложения"
+                                      IsChecked="{Binding StartProxyWithApp, Mode=TwoWay}" />
+                            <CheckBox Content="Запускать Process Mode со стартом приложения"
+                                      IsChecked="{Binding StartProcessModeWithApp, Mode=TwoWay}"
+                                      IsEnabled="{Binding IsStartProcessModeWithAppEnabled}"
+                                      Visibility="{Binding IsProcessModeUiVisible, Converter={StaticResource BoolToVis}}" />
+                            <CheckBox Content="Запускать Zapret со стартом приложения"
+                                      IsChecked="{Binding StartBypassWithApp, Mode=TwoWay}"
+                                      IsEnabled="{Binding IsStartBypassWithAppEnabled}" />
+                            <CheckBox Content="Запускать свернутым в трей"
+                                      IsChecked="{Binding StartMinimizedToTray, Mode=TwoWay}" />
+                            <CheckBox Content="Уведомлять при сворачивании приложения"
+                                      IsChecked="{Binding NotifyOnMinimizeToTray, Mode=TwoWay}" />
+                            <Button Content="Перезапустить от имени администратора"
+                                    Command="{Binding RestartAsAdminCommand}"
+                                    HorizontalAlignment="Left"
+                                    Margin="0,12,0,0"
+                                    MinWidth="280" />
+                            <TextBlock Text="Вкладки"
+                                       Style="{StaticResource SectionTitle}"
+                                       Margin="0,16,0,0" />
+                            <CheckBox Content="Показывать «Тунелирование»"
+                                      IsChecked="{Binding ShowTunnelingTab, Mode=TwoWay}" />
+                            <CheckBox Content="Показывать «Прокси»"
+                                      IsChecked="{Binding ShowProxyTab, Mode=TwoWay}" />
+                            <CheckBox Content="Показывать «Process Mode»"
+                                      IsChecked="{Binding ShowProcessModeTab, Mode=TwoWay}"
+                                      Visibility="{Binding IsProcessModeUiVisible, Converter={StaticResource BoolToVis}}" />
+                            <CheckBox Content="Показывать «Zapret + TG»"
+                                      IsChecked="{Binding ShowBypassTab, Mode=TwoWay}" />
+                            <TextBlock Text="Тунелирование"
+                                       Style="{StaticResource SectionTitle}"
+                                       Margin="0,16,0,0" />
+                            <CheckBox Content="Обновлять списки при запуске приложения"
+                                      IsChecked="{Binding UpdateListsOnStartup, Mode=TwoWay}" />
+                            <Button Content="Обновить списки"
+                                    Command="{Binding UpdateListsCommand}"
+                                    HorizontalAlignment="Left"
+                                    Margin="0,12,0,0"
+                                    MinWidth="180" />
+                            <Button Content="Открыть папку данных"
+                                    Command="{Binding OpenDataFolderCommand}"
+                                    HorizontalAlignment="Left"
+                                    Margin="0,24,0,0"
+                                    MinWidth="180" />
+                        </StackPanel>
+                    </ScrollViewer>
+                    <Border Grid.Row="1" Style="{StaticResource PageActionBar}">
+                        <Button Content="Применить"
+                                Command="{Binding SaveSettingsCommand}"
+                                HorizontalAlignment="Right"
+                                Style="{StaticResource AccentButtonStyle}"
+                                Padding="16,10" />
+                    </Border>
+                </Grid>
+            </PivotItem>
+            <PivotItem Header="Обновления">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Spacing="8" Margin="0,12,0,0">
+                        <TextBlock Text="Приложение" Style="{StaticResource SectionTitle}" />
+                        <TextBlock Text="{Binding AppUpdateStatus}"
+                                   Style="{StaticResource CaptionText}"
+                                   TextWrapping="Wrap" />
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <Button Content="Проверить наличие обновлений"
+                                    Command="{Binding CheckAppUpdateCommand}"
+                                    MinWidth="220" />
+                            <Button Content="Обновить"
+                                    Command="{Binding InstallAppUpdateCommand}"
+                                    MinWidth="180" />
+                        </StackPanel>
+                        <TextBlock Text="Zapret"
+                                   Style="{StaticResource SectionTitle}"
+                                   Margin="0,16,0,0" />
+                        <TextBlock Text="{Binding ZapretUpdateStatus}"
+                                   Style="{StaticResource CaptionText}"
+                                   TextWrapping="Wrap" />
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <Button Content="Проверить обновления"
+                                    Command="{Binding CheckZapretUpdateCommand}"
+                                    MinWidth="180" />
+                            <Button Content="Скачать обновление"
+                                    Command="{Binding DownloadZapretUpdateCommand}"
+                                    MinWidth="180" />
+                        </StackPanel>
+                        <TextBlock Text="Sing-box"
+                                   Style="{StaticResource SectionTitle}"
+                                   Margin="0,16,0,0" />
+                        <TextBlock Text="{Binding SingBoxUpdateStatus}"
+                                   Style="{StaticResource CaptionText}"
+                                   TextWrapping="Wrap" />
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <Button Content="Проверить обновления"
+                                    Command="{Binding CheckSingBoxUpdateCommand}"
+                                    MinWidth="180" />
+                            <Button Content="Скачать обновление"
+                                    Command="{Binding DownloadSingBoxUpdateCommand}"
+                                    MinWidth="180" />
+                        </StackPanel>
+                        <TextBlock Text="Wireproxy (AmneziaWG)"
+                                   Style="{StaticResource SectionTitle}"
+                                   Margin="0,16,0,0" />
+                        <TextBlock Text="{Binding AmneziaBoxUpdateStatus}"
+                                   Style="{StaticResource CaptionText}"
+                                   TextWrapping="Wrap" />
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <Button Content="Проверить обновления"
+                                    Command="{Binding CheckAmneziaBoxUpdateCommand}"
+                                    MinWidth="180" />
+                            <Button Content="Скачать обновление"
+                                    Command="{Binding DownloadAmneziaBoxUpdateCommand}"
+                                    MinWidth="180" />
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </PivotItem>
+        </Pivot>
+    </Grid>
+</Page>

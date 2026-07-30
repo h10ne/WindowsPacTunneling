@@ -1,0 +1,231 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="WPT.WinUI.Pages.TunnelingPage"
+    x:Name="PageRoot"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid Padding="24,16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="12">
+                <Border Style="{StaticResource CardBorder}">
+                    <StackPanel Spacing="4">
+                        <ToggleSwitch Header="Весь трафик через прокси"
+                                      IsOn="{Binding RouteAllTrafficThroughProxy, Mode=TwoWay}" />
+                        <TextBlock Text="Все сайты будут направляться через прокси-сервер, списки сервисов не используются"
+                                   Style="{StaticResource CaptionText}" />
+                    </StackPanel>
+                </Border>
+                <Border Style="{StaticResource CardBorder}">
+                    <Grid ColumnSpacing="12" RowSpacing="4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" MinWidth="200" />
+                            <ColumnDefinition Width="120" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Column="0" Text="Прокси-сервер" Style="{StaticResource CaptionText}" />
+                        <TextBlock Grid.Column="1" Text="Порт PAC" Style="{StaticResource CaptionText}" />
+                        <AutoSuggestBox Grid.Row="1" Grid.Column="0"
+                                        ItemsSource="{Binding ProxyHistory}"
+                                        Text="{Binding ProxyAddress, Mode=TwoWay}"
+                                        PlaceholderText="127.0.0.1:10808"
+                                        UpdateTextOnSelect="True" />
+                        <AutoSuggestBox Grid.Row="1" Grid.Column="1"
+                                        ItemsSource="{Binding PacPortHistory}"
+                                        Text="{Binding PacPort, Mode=TwoWay}"
+                                        PlaceholderText="1080"
+                                        UpdateTextOnSelect="True" />
+                    </Grid>
+                </Border>
+                <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                        CornerRadius="8"
+                        Padding="12"
+                        Visibility="{Binding RouteAllTrafficThroughProxy, Converter={StaticResource BoolToVis}}">
+                    <TextBlock Text="Не используется — включён режим «Весь трафик через прокси»"
+                               Style="{StaticResource CaptionText}"
+                               TextWrapping="Wrap" />
+                </Border>
+                <StackPanel Spacing="12"
+                            Opacity="{Binding IsTunnelingListsEnabled, Converter={StaticResource BoolToOpacity}}"
+                            IsHitTestVisible="{Binding IsTunnelingListsEnabled}">
+                    <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                            CornerRadius="8"
+                            Padding="12"
+                            Visibility="{Binding ShowRussiaInsideRestrictionHint, Converter={StaticResource BoolToVis}}">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Ограничения Russia inside" FontWeight="SemiBold" FontSize="12" />
+                            <TextBlock Text="{Binding RussiaInsideRestrictionHint}"
+                                       Style="{StaticResource CaptionText}"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource CardBorder}">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Списки сервисов" Style="{StaticResource SectionTitle}" />
+                            <ItemsRepeater ItemsSource="{Binding SelectedLists}">
+                                <ItemsRepeater.Layout>
+                                    <UniformGridLayout Orientation="Horizontal"
+                                                       MinItemWidth="168"
+                                                       MinItemHeight="32"
+                                                       MinColumnSpacing="8"
+                                                       MinRowSpacing="8"
+                                                       ItemsStretch="Fill" />
+                                </ItemsRepeater.Layout>
+                                <ItemsRepeater.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Style="{StaticResource ListTileBorder}">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding DisplayName}"
+                                                           VerticalAlignment="Center"
+                                                           Margin="10,0,4,0"
+                                                           TextTrimming="CharacterEllipsis" />
+                                                <Button Grid.Column="1"
+                                                        Style="{StaticResource ListItemRemoveButton}"
+                                                        Command="{Binding DataContext.RemoveListCommand, ElementName=PageRoot}"
+                                                        CommandParameter="{Binding}" />
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsRepeater.ItemTemplate>
+                            </ItemsRepeater>
+                            <ComboBox ItemsSource="{Binding AvailableLists}"
+                                      DisplayMemberPath="DisplayName"
+                                      SelectedItem="{Binding SelectedListToAdd, Mode=TwoWay}"
+                                      PlaceholderText="— добавить список —"
+                                      HorizontalAlignment="Stretch" />
+                        </StackPanel>
+                    </Border>
+                    <Expander Style="{StaticResource FullWidthExpander}" IsExpanded="False">
+                        <Expander.Header>
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                    <TextBlock Text="Свои домены" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding CustomDomains.Count, Mode=OneWay}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                </StackPanel>
+                                <TextBlock Text="Пользовательские домены, добавленные вручную"
+                                           Style="{StaticResource CaptionText}"
+                                           Margin="0,2,0,0" />
+                            </StackPanel>
+                        </Expander.Header>
+                        <StackPanel Style="{StaticResource EditableListInsets}" Spacing="8">
+                            <Grid ColumnSpacing="8" HorizontalAlignment="Stretch">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox Text="{Binding NewDomain, Mode=TwoWay}"
+                                         PlaceholderText="example.com"
+                                         HorizontalAlignment="Stretch" />
+                                <Button Grid.Column="1"
+                                        Content="+"
+                                        Style="{StaticResource CompactAddButton}"
+                                        Command="{Binding AddDomainCommand}" />
+                            </Grid>
+                            <ItemsControl Style="{StaticResource FullWidthItemsControl}"
+                                          ItemsSource="{Binding CustomDomains}">
+                                <ItemsControl.ItemContainerStyle>
+                                    <Style TargetType="ContentPresenter" BasedOn="{StaticResource RemovableListItemPresenter}" />
+                                </ItemsControl.ItemContainerStyle>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Style="{StaticResource ListTileBorder}" Margin="0,0,0,4">
+                                            <Grid MinHeight="32">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding}"
+                                                           VerticalAlignment="Center"
+                                                           Margin="8,0,8,0"
+                                                           TextTrimming="CharacterEllipsis" />
+                                                <Button Grid.Column="1"
+                                                        Style="{StaticResource ListItemRemoveButton}"
+                                                        Command="{Binding DataContext.RemoveDomainCommand, ElementName=PageRoot}"
+                                                        CommandParameter="{Binding}" />
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Expander>
+                    <Expander Style="{StaticResource FullWidthExpander}" IsExpanded="False">
+                        <Expander.Header>
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                    <TextBlock Text="Свои IP и подсети" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding CustomIps.Count, Mode=OneWay}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                </StackPanel>
+                                <TextBlock Text="Пользовательские IP-адреса и CIDR, добавленные вручную"
+                                           Style="{StaticResource CaptionText}"
+                                           Margin="0,2,0,0" />
+                            </StackPanel>
+                        </Expander.Header>
+                        <StackPanel Style="{StaticResource EditableListInsets}" Spacing="8">
+                            <Grid ColumnSpacing="8" HorizontalAlignment="Stretch">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox Text="{Binding NewIp, Mode=TwoWay}"
+                                         PlaceholderText="1.2.3.4 или 10.0.0.0/8"
+                                         HorizontalAlignment="Stretch" />
+                                <Button Grid.Column="1"
+                                        Content="+"
+                                        Style="{StaticResource CompactAddButton}"
+                                        Command="{Binding AddIpCommand}" />
+                            </Grid>
+                            <ItemsControl Style="{StaticResource FullWidthItemsControl}"
+                                          ItemsSource="{Binding CustomIps}">
+                                <ItemsControl.ItemContainerStyle>
+                                    <Style TargetType="ContentPresenter" BasedOn="{StaticResource RemovableListItemPresenter}" />
+                                </ItemsControl.ItemContainerStyle>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Style="{StaticResource ListTileBorder}" Margin="0,0,0,4">
+                                            <Grid MinHeight="32">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding}"
+                                                           VerticalAlignment="Center"
+                                                           Margin="8,0,8,0"
+                                                           TextTrimming="CharacterEllipsis" />
+                                                <Button Grid.Column="1"
+                                                        Style="{StaticResource ListItemRemoveButton}"
+                                                        Command="{Binding DataContext.RemoveIpCommand, ElementName=PageRoot}"
+                                                        CommandParameter="{Binding}" />
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Expander>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+        <Border Grid.Row="1" Style="{StaticResource PageActionBar}">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button Content="Применить" Command="{Binding ApplyCommand}" Style="{StaticResource AccentButtonStyle}" />
+                <Button Content="Показать PAC" Command="{Binding ShowPacCommand}" />
+                <Button Content="Отключить PAC"
+                        Command="{Binding DisablePacCommand}"
+                        Visibility="{Binding IsPacActive, Converter={StaticResource BoolToVis}}" />
+            </StackPanel>
+        </Border>
+    </Grid>
+</Page>

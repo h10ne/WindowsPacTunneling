@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0-windows</TargetFramework>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <UseWindowsForms>true</UseWindowsForms>
+        <RootNamespace>WPT.TraySupport</RootNamespace>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\WPT.Core\WPT.Core.csproj" />
+        <ProjectReference Include="..\WPT.ViewModels\WPT.ViewModels.csproj" />
+    </ItemGroup>
+
+</Project>

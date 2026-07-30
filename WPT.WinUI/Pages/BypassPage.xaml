@@ -1,0 +1,75 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="WPT.WinUI.Pages.BypassPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid Padding="24,16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="12">
+                <TextBlock Text="Разблокировка YouTube, Discord и Telegram"
+                           FontWeight="SemiBold"
+                           FontSize="14" />
+                <CheckBox Content="YouTube и Discord"
+                          IsChecked="{Binding BypassEnableZapret, Mode=TwoWay}"
+                          IsEnabled="{Binding IsBypassEditingEnabled}" />
+                <CheckBox Content="Telegram"
+                          IsChecked="{Binding BypassEnableTelegram, Mode=TwoWay}"
+                          IsEnabled="{Binding IsBypassEditingEnabled}" />
+                <TextBlock Text="{Binding BypassStatus}"
+                           TextWrapping="Wrap"
+                           Style="{StaticResource CaptionText}" />
+                <Border Style="{StaticResource CardBorder}"
+                        Visibility="{Binding IsBypassInfoTextVisible, Converter={StaticResource BoolToVis}}">
+                    <TextBlock Text="{Binding BypassInfoText}"
+                               TextWrapping="Wrap"
+                               FontSize="12" />
+                </Border>
+                <Expander IsExpanded="False">
+                    <Expander.Header>
+                        <TextBlock Text="Расширенные настройки" FontWeight="SemiBold" />
+                    </Expander.Header>
+                    <StackPanel Spacing="12" Margin="0,8,0,0">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Порт MTProto-прокси" Style="{StaticResource CaptionText}" />
+                            <TextBox Text="{Binding TgWsProxyPort, Mode=TwoWay}"
+                                     Width="100"
+                                     HorizontalAlignment="Left"
+                                     IsEnabled="{Binding IsTgWsProxyPortEditingEnabled}"
+                                     PlaceholderText="1443" />
+                        </StackPanel>
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Стратегия zapret" Style="{StaticResource CaptionText}" />
+                            <ComboBox ItemsSource="{Binding AvailableZapretStrategies}"
+                                      SelectedItem="{Binding SelectedZapretStrategy, Mode=TwoWay}"
+                                      IsEnabled="{Binding IsBypassEditingEnabled}"
+                                      HorizontalAlignment="Stretch" />
+                        </StackPanel>
+                    </StackPanel>
+                </Expander>
+            </StackPanel>
+        </ScrollViewer>
+        <Border Grid.Row="1" Style="{StaticResource PageActionBar}">
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Button Grid.Column="0"
+                        Content="{Binding BypassToggleLabel}"
+                        Command="{Binding ToggleBypassCommand}"
+                        MinWidth="220"
+                        HorizontalAlignment="Left"
+                        Style="{StaticResource AccentButtonStyle}" />
+                <Button Grid.Column="1"
+                        Content="{Binding BypassProbeLabel}"
+                        Command="{Binding ProbeBypassStrategyCommand}"
+                        MinWidth="180"
+                        HorizontalAlignment="Right" />
+            </Grid>
+        </Border>
+    </Grid>
+</Page>
