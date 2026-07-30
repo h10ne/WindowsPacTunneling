@@ -38,39 +38,57 @@ internal static class AppIcon
 
     private static string? ResolveIconPath()
     {
-        var path = Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico");
-        if (File.Exists(path))
+        var bundledPath = GetBundledIconPath();
+        if (bundledPath != null)
         {
-            return path;
+            return bundledPath;
         }
 
-        path = Path.Combine(Path.GetTempPath(), "WPT.WinUI", "app.ico");
-        if (File.Exists(path))
-        {
-            return path;
-        }
-
+        var tempPath = Path.Combine(Path.GetTempPath(), "WPT.WinUI", "app.ico");
         using var stream = OpenIconStream();
         if (stream == null)
         {
             return null;
         }
 
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        using (var file = File.OpenWrite(path))
+        Directory.CreateDirectory(Path.GetDirectoryName(tempPath)!);
+        using (var file = File.Create(tempPath))
         {
             stream.CopyTo(file);
         }
 
-        return path;
+        return tempPath;
+    }
+
+    private static string? GetBundledIconPath()
+    {
+        var appDirectory = GetAppDirectory();
+        if (appDirectory == null)
+        {
+            return null;
+        }
+
+        var bundledPath = Path.Combine(appDirectory, "Assets", "app.ico");
+        return File.Exists(bundledPath) ? bundledPath : null;
+    }
+
+    private static string? GetAppDirectory()
+    {
+        var processPath = Environment.ProcessPath;
+        if (!string.IsNullOrWhiteSpace(processPath))
+        {
+            return Path.GetDirectoryName(processPath);
+        }
+
+        return AppContext.BaseDirectory;
     }
 
     private static Stream? OpenIconStream()
     {
-        var path = Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico");
-        if (File.Exists(path))
+        var bundledPath = GetBundledIconPath();
+        if (bundledPath != null)
         {
-            return File.OpenRead(path);
+            return File.OpenRead(bundledPath);
         }
 
         return Assembly.GetExecutingAssembly().GetManifestResourceStream(EmbeddedResourceName);

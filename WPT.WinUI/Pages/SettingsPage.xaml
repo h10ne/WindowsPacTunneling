@@ -82,56 +82,108 @@
                         <TextBlock Text="{Binding AppUpdateStatus}"
                                    Style="{StaticResource CaptionText}"
                                    TextWrapping="Wrap" />
-                        <StackPanel Orientation="Horizontal" Spacing="12">
-                            <Button Content="Проверить наличие обновлений"
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Button Grid.Column="0"
+                                    Content="Проверить обновления"
                                     Command="{Binding CheckAppUpdateCommand}"
-                                    MinWidth="220" />
-                            <Button Content="Обновить"
-                                    Command="{Binding InstallAppUpdateCommand}"
                                     MinWidth="180" />
-                        </StackPanel>
+                            <Button Grid.Column="1"
+                                    Content="Обновить"
+                                    Command="{Binding InstallAppUpdateCommand}"
+                                    MinWidth="180"
+                                    Margin="12,0,0,0" />
+                            <Button Grid.Column="3"
+                                    Content="GitHub"
+                                    Command="{Binding OpenAppGitHubReleasesCommand}"
+                                    MinWidth="100" />
+                        </Grid>
                         <TextBlock Text="Zapret"
                                    Style="{StaticResource SectionTitle}"
                                    Margin="0,16,0,0" />
                         <TextBlock Text="{Binding ZapretUpdateStatus}"
                                    Style="{StaticResource CaptionText}"
                                    TextWrapping="Wrap" />
-                        <StackPanel Orientation="Horizontal" Spacing="12">
-                            <Button Content="Проверить обновления"
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Button Grid.Column="0"
+                                    Content="Проверить обновления"
                                     Command="{Binding CheckZapretUpdateCommand}"
                                     MinWidth="180" />
-                            <Button Content="Скачать обновление"
+                            <Button Grid.Column="1"
+                                    Content="Обновить"
                                     Command="{Binding DownloadZapretUpdateCommand}"
-                                    MinWidth="180" />
-                        </StackPanel>
+                                    MinWidth="180"
+                                    Margin="12,0,0,0" />
+                            <Button Grid.Column="3"
+                                    Content="GitHub"
+                                    Command="{Binding OpenZapretGitHubReleasesCommand}"
+                                    MinWidth="100" />
+                        </Grid>
                         <TextBlock Text="Sing-box"
                                    Style="{StaticResource SectionTitle}"
                                    Margin="0,16,0,0" />
                         <TextBlock Text="{Binding SingBoxUpdateStatus}"
                                    Style="{StaticResource CaptionText}"
                                    TextWrapping="Wrap" />
-                        <StackPanel Orientation="Horizontal" Spacing="12">
-                            <Button Content="Проверить обновления"
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Button Grid.Column="0"
+                                    Content="Проверить обновления"
                                     Command="{Binding CheckSingBoxUpdateCommand}"
                                     MinWidth="180" />
-                            <Button Content="Скачать обновление"
+                            <Button Grid.Column="1"
+                                    Content="Обновить"
                                     Command="{Binding DownloadSingBoxUpdateCommand}"
-                                    MinWidth="180" />
-                        </StackPanel>
+                                    MinWidth="180"
+                                    Margin="12,0,0,0" />
+                            <Button Grid.Column="3"
+                                    Content="GitHub"
+                                    Command="{Binding OpenSingBoxGitHubReleasesCommand}"
+                                    MinWidth="100" />
+                        </Grid>
                         <TextBlock Text="Wireproxy (AmneziaWG)"
                                    Style="{StaticResource SectionTitle}"
                                    Margin="0,16,0,0" />
                         <TextBlock Text="{Binding AmneziaBoxUpdateStatus}"
                                    Style="{StaticResource CaptionText}"
                                    TextWrapping="Wrap" />
-                        <StackPanel Orientation="Horizontal" Spacing="12">
-                            <Button Content="Проверить обновления"
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Button Grid.Column="0"
+                                    Content="Проверить обновления"
                                     Command="{Binding CheckAmneziaBoxUpdateCommand}"
                                     MinWidth="180" />
-                            <Button Content="Скачать обновление"
+                            <Button Grid.Column="1"
+                                    Content="Обновить"
                                     Command="{Binding DownloadAmneziaBoxUpdateCommand}"
-                                    MinWidth="180" />
-                        </StackPanel>
+                                    MinWidth="180"
+                                    Margin="12,0,0,0" />
+                            <Button Grid.Column="3"
+                                    Content="GitHub"
+                                    Command="{Binding OpenWireproxyGitHubReleasesCommand}"
+                                    MinWidth="100" />
+                        </Grid>
                     </StackPanel>
                 </ScrollViewer>
             </PivotItem>

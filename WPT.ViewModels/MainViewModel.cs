@@ -167,6 +167,10 @@ public sealed class MainViewModel : ViewModelBase
         DownloadSingBoxUpdateCommand = new RelayCommand(async () => await DownloadSingBoxUpdateAsync(), () => !IsBusy && CanDownloadSingBoxUpdate);
         DownloadAmneziaBoxUpdateCommand = new RelayCommand(async () => await DownloadAmneziaBoxUpdateAsync(), () => !IsBusy && CanDownloadAmneziaBoxUpdate);
         InstallAppUpdateCommand = new RelayCommand(async () => await InstallAppUpdateAsync(), () => CanInstallAppUpdate);
+        OpenAppGitHubReleasesCommand = new RelayCommand(() => OpenGitHubReleases(GitHubReleaseUrls.App));
+        OpenZapretGitHubReleasesCommand = new RelayCommand(() => OpenGitHubReleases(GitHubReleaseUrls.Zapret));
+        OpenSingBoxGitHubReleasesCommand = new RelayCommand(() => OpenGitHubReleases(GitHubReleaseUrls.SingBox));
+        OpenWireproxyGitHubReleasesCommand = new RelayCommand(() => OpenGitHubReleases(GitHubReleaseUrls.Wireproxy));
         OpenSettingsForUpdateCommand = new RelayCommand(OpenSettingsForUpdate);
         AppUpdateStatus = $"Текущая версия: {AppVersionLabel}.";
 
@@ -1146,6 +1150,14 @@ public sealed class MainViewModel : ViewModelBase
     public RelayCommand DownloadSingBoxUpdateCommand { get; }
 
     public RelayCommand InstallAppUpdateCommand { get; }
+
+    public RelayCommand OpenAppGitHubReleasesCommand { get; }
+
+    public RelayCommand OpenZapretGitHubReleasesCommand { get; }
+
+    public RelayCommand OpenSingBoxGitHubReleasesCommand { get; }
+
+    public RelayCommand OpenWireproxyGitHubReleasesCommand { get; }
 
     public RelayCommand OpenSettingsForUpdateCommand { get; }
 
@@ -3248,6 +3260,15 @@ public sealed class MainViewModel : ViewModelBase
         Process.Start(new ProcessStartInfo
         {
             FileName = AppPaths.Root,
+            UseShellExecute = true
+        });
+    }
+
+    private static void OpenGitHubReleases(string url)
+    {
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = url,
             UseShellExecute = true
         });
     }

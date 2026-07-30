@@ -138,17 +138,33 @@
 
                     <TextBlock Text="{Binding AppUpdateStatus}" Style="{StaticResource CaptionText}" TextWrapping="Wrap" Margin="0,0,0,8" />
 
-                    <StackPanel Orientation="Horizontal">
+                    <Grid>
 
-                        <Button Content="Проверить наличие обновлений" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left"
+                        <Grid.ColumnDefinitions>
 
-                                Command="{Binding CheckAppUpdateCommand}" MinWidth="220" />
+                            <ColumnDefinition Width="Auto" />
 
-                        <Button Content="Обновить" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left"
+                            <ColumnDefinition Width="Auto" />
+
+                            <ColumnDefinition Width="*" />
+
+                            <ColumnDefinition Width="Auto" />
+
+                        </Grid.ColumnDefinitions>
+
+                        <Button Grid.Column="0" Content="Проверить обновления" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left"
+
+                                Command="{Binding CheckAppUpdateCommand}" MinWidth="180" />
+
+                        <Button Grid.Column="1" Content="Обновить" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left"
 
                                 Command="{Binding InstallAppUpdateCommand}" MinWidth="180" Margin="12,0,0,0" />
 
-                    </StackPanel>
+                        <Button Grid.Column="3" Content="GitHub" Style="{StaticResource SecondaryButton}"
+
+                                Command="{Binding OpenAppGitHubReleasesCommand}" MinWidth="100" />
+
+                    </Grid>
 
 
 
@@ -156,17 +172,33 @@
 
                     <TextBlock Text="{Binding ZapretUpdateStatus}" Style="{StaticResource CaptionText}" TextWrapping="Wrap" Margin="0,0,0,8" />
 
-                    <StackPanel Orientation="Horizontal">
+                    <Grid>
 
-                        <Button Content="Проверить обновления" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left"
+                        <Grid.ColumnDefinitions>
+
+                            <ColumnDefinition Width="Auto" />
+
+                            <ColumnDefinition Width="Auto" />
+
+                            <ColumnDefinition Width="*" />
+
+                            <ColumnDefinition Width="Auto" />
+
+                        </Grid.ColumnDefinitions>
+
+                        <Button Grid.Column="0" Content="Проверить обновления" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left"
 
                                 Command="{Binding CheckZapretUpdateCommand}" MinWidth="180" />
 
-                        <Button Content="Скачать обновление" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left"
+                        <Button Grid.Column="1" Content="Обновить" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left"
 
                                 Command="{Binding DownloadZapretUpdateCommand}" MinWidth="180" Margin="12,0,0,0" />
 
-                    </StackPanel>
+                        <Button Grid.Column="3" Content="GitHub" Style="{StaticResource SecondaryButton}"
+
+                                Command="{Binding OpenZapretGitHubReleasesCommand}" MinWidth="100" />
+
+                    </Grid>
 
 
 
@@ -174,17 +206,33 @@
 
                     <TextBlock Text="{Binding SingBoxUpdateStatus}" Style="{StaticResource CaptionText}" TextWrapping="Wrap" Margin="0,0,0,8" />
 
-                    <StackPanel Orientation="Horizontal">
+                    <Grid>
 
-                        <Button Content="Проверить обновления" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left"
+                        <Grid.ColumnDefinitions>
+
+                            <ColumnDefinition Width="Auto" />
+
+                            <ColumnDefinition Width="Auto" />
+
+                            <ColumnDefinition Width="*" />
+
+                            <ColumnDefinition Width="Auto" />
+
+                        </Grid.ColumnDefinitions>
+
+                        <Button Grid.Column="0" Content="Проверить обновления" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left"
 
                                 Command="{Binding CheckSingBoxUpdateCommand}" MinWidth="180" />
 
-                        <Button Content="Скачать обновление" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left"
+                        <Button Grid.Column="1" Content="Обновить" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left"
 
                                 Command="{Binding DownloadSingBoxUpdateCommand}" MinWidth="180" Margin="12,0,0,0" />
 
-                    </StackPanel>
+                        <Button Grid.Column="3" Content="GitHub" Style="{StaticResource SecondaryButton}"
+
+                                Command="{Binding OpenSingBoxGitHubReleasesCommand}" MinWidth="100" />
+
+                    </Grid>
 
 
 
@@ -192,17 +240,33 @@
 
                     <TextBlock Text="{Binding AmneziaBoxUpdateStatus}" Style="{StaticResource CaptionText}" TextWrapping="Wrap" Margin="0,0,0,8" />
 
-                    <StackPanel Orientation="Horizontal">
+                    <Grid>
 
-                        <Button Content="Проверить обновления" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left"
+                        <Grid.ColumnDefinitions>
+
+                            <ColumnDefinition Width="Auto" />
+
+                            <ColumnDefinition Width="Auto" />
+
+                            <ColumnDefinition Width="*" />
+
+                            <ColumnDefinition Width="Auto" />
+
+                        </Grid.ColumnDefinitions>
+
+                        <Button Grid.Column="0" Content="Проверить обновления" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left"
 
                                 Command="{Binding CheckAmneziaBoxUpdateCommand}" MinWidth="180" />
 
-                        <Button Content="Скачать обновление" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left"
+                        <Button Grid.Column="1" Content="Обновить" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left"
 
                                 Command="{Binding DownloadAmneziaBoxUpdateCommand}" MinWidth="180" Margin="12,0,0,0" />
 
-                    </StackPanel>
+                        <Button Grid.Column="3" Content="GitHub" Style="{StaticResource SecondaryButton}"
+
+                                Command="{Binding OpenWireproxyGitHubReleasesCommand}" MinWidth="100" />
+
+                    </Grid>
 
 
 
