@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
@@ -17,7 +17,7 @@
     <DisablePackagingProjectCapability>true</DisablePackagingProjectCapability>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Version>1.3.0</Version>
+    <Version>1.3.1</Version>
     <Product>WPT</Product>
     <AssemblyTitle>WPT</AssemblyTitle>
   </PropertyGroup>
@@ -42,7 +42,9 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.7705" />
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260317003" />
+    <!-- Не метапакет Microsoft.WindowsAppSDK: он тянет AI/ML (onnxruntime + DirectML ≈ 38 МБ) в self-contained exe. -->
+    <PackageReference Include="Microsoft.WindowsAppSDK.WinUI" Version="1.8.260224000" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.DWrite" Version="1.8.25122902" />
   </ItemGroup>
 
   <ItemGroup>

@@ -17,7 +17,6 @@ public partial class App : Application
 
     public App()
     {
-        Environment.SetEnvironmentVariable("MICROSOFT_WINDOWSAPPRUNTIME_BASE_DIRECTORY", AppContext.BaseDirectory);
         InitializeComponent();
         RegisterGlobalExceptionHandlers();
     }
@@ -34,7 +33,7 @@ public partial class App : Application
 
         AppLog.Initialize();
 
-        if (!IsElevatedLaunch(args.Arguments) && ShouldRestartElevated())
+        if (!IsElevatedLaunch() && ShouldRestartElevated())
         {
             if (!TryRestartElevated())
             {
@@ -43,12 +42,23 @@ public partial class App : Application
             }
         }
 
-        UiHostContext.Initialize(UiHost);
-        var window = new MainWindow();
-        _window = window;
-        UiHost.SetWindow(window);
-        window.InitializeViewModel();
-        window.Activate();
+        try
+        {
+            UiHostContext.Initialize(UiHost);
+            var window = new MainWindow();
+            _window = window;
+            UiHost.SetWindow(window);
+            window.InitializeViewModel();
+            window.Activate();
+        }
+        catch (Exception ex)
+        {
+            // Без этого процесс оставался жить без окна и держал mutex — следующие запуски молча выходили.
+            AppLog.Error(ex, "Не удалось создать главное окно WinUI");
+            SingleInstanceGuard.Release();
+            AppLog.Close();
+            Exit();
+        }
     }
 
     internal static bool TryRestartElevated()
@@ -74,8 +84,9 @@ public partial class App : Application
         return settings.RunAsAdministrator && !AdminHelper.IsRunningAsAdmin();
     }
 
-    private static bool IsElevatedLaunch(string args) =>
-        args.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+    // LaunchActivatedEventArgs.Arguments в unpackaged WinUI пустой — берём командную строку процесса.
+    private static bool IsElevatedLaunch() =>
+        Environment.GetCommandLineArgs()
             .Any(arg => arg.Equals(ElevatedArg, StringComparison.OrdinalIgnoreCase));
 
     private void RegisterGlobalExceptionHandlers()

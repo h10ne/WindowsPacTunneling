@@ -10,7 +10,7 @@ Write-Host "Generating app icons..."
 python (Join-Path $PSScriptRoot "generate_app_icon.py")
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-Write-Host "Publishing WinUI (WPT.exe, framework-dependent single-file)..."
+Write-Host "Publishing WinUI (WPT.exe, self-contained single-file)..."
 dotnet publish (Join-Path $root "WPT.WinUI\WPT.WinUI.csproj") -c Release /p:PublishProfile=win-x64-single
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 

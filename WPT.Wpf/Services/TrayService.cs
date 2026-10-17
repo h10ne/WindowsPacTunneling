@@ -2,6 +2,7 @@ using System.Drawing;
 using System.Windows;
 using System.Windows.Forms;
 using WPT.Core;
+using WPT.Core.Services;
 using WPT.ViewModels;
 using Application = System.Windows.Application;
 
@@ -26,6 +27,7 @@ public sealed class TrayService : IDisposable
     {
         _window = window;
         _viewModel = viewModel;
+        SingleInstanceGuard.ListenForActivation(() => _window.Dispatcher.BeginInvoke(ShowMainWindow));
 
         Icon? icon = AppIcon.CreateTrayIcon();
 

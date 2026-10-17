@@ -18,6 +18,7 @@ public sealed class TrayService : IDisposable
         _viewModel = viewModel;
         var trayWindow = new WinUiTrayWindow(window);
         _controller = new TrayController(trayWindow, viewModel, AppIcon.CreateTrayIcon(), ExitApplication);
+        SingleInstanceGuard.ListenForActivation(() => UiHostContext.Current.RunOnUiThread(_controller.ShowMainWindow));
     }
 
     public void UpdateMenu() => _controller.UpdateMenu();

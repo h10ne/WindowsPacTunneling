@@ -11,7 +11,7 @@ Windows-приложение для выборочного проксирова�
 - [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) — только для сборки из исходников
 
 > Сборка из [Releases](https://github.com/h10ne/WindowsPacTunneling/releases/latest):
-> - **WPT.exe** — основной клиент (WinUI 3), один `.exe` без встроенного .NET/Windows App SDK; на ПК должны быть установлены [.NET 10 Runtime](https://dotnet.microsoft.com/download/dotnet/10.0) и [Windows App Runtime 1.8+](https://learn.microsoft.com/windows/apps/windows-app-sdk/deploy-unpackaged-apps)
+> - **WPT.exe** — основной клиент (WinUI 3), один `.exe` со встроенными .NET и Windows App SDK (отдельная установка не нужна)
 > - **WPT WPF.exe** — прежний WPF-интерфейс, один `.exe` со встроенным .NET runtime (отдельная установка .NET не нужна)
 
 ### Скачать
