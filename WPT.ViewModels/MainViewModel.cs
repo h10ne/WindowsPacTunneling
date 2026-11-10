@@ -103,6 +103,9 @@ public sealed class MainViewModel : ViewModelBase
     private bool _appliedShowBypassTab = true;
     private bool _routeAllTrafficThroughProxy;
     private bool _showRussiaInsideRestrictionHint;
+    private bool _isListsDownloadPending;
+    private int _isListsProxyRetryRunning;
+    private volatile bool _applyPacAfterListsDownload;
     private bool _bypassEnableZapret = true;
     private bool _bypassEnableTelegram = true;
     private string _bypassStatus = "Zapret: остановлен";
@@ -1089,6 +1092,13 @@ public sealed class MainViewModel : ViewModelBase
 
     public string RussiaInsideRestrictionHint => RussiaInsideListRules.InfoBarText;
 
+    /// <summary> Списки доменов не скачаны: GitHub недоступен, ждём рабочий прокси </summary>
+    public bool IsListsDownloadPending
+    {
+        get => _isListsDownloadPending;
+        private set => SetProperty(ref _isListsDownloadPending, value);
+    }
+
     public RelayCommand ApplyCommand { get; }
 
     public RelayCommand ShowPacCommand { get; }
@@ -1172,11 +1182,7 @@ public sealed class MainViewModel : ViewModelBase
     {
         try
         {
-            if (_settings.UpdateListsOnStartup)
-            {
-                await UpdateListsAsync(showWarningOnError: true, reEnableUi: false).ConfigureAwait(false);
-            }
-
+            // Прокси и Process Mode поднимаем до списков: если GitHub заблокирован, списки скачаются через них
             if (_settings.IsLocalProxyActive && CanRestoreLocalProxy())
             {
                 if (IsAnyLocalProxyRunning())
@@ -1217,6 +1223,11 @@ public sealed class MainViewModel : ViewModelBase
                 && _settings.ProcessModeApplications.Count > 0)
             {
                 await StartProcessModeAsync(silent: true).ConfigureAwait(false);
+            }
+
+            if (_settings.UpdateListsOnStartup || !_domainListService.HasCachedLists())
+            {
+                await UpdateListsAsync(showWarningOnError: true, reEnableUi: false).ConfigureAwait(false);
             }
 
             if (_settings.StartProxyWithApp && _settings.IsProxyActive)
@@ -1753,9 +1764,7 @@ public sealed class MainViewModel : ViewModelBase
             return;
         }
 
-        if (!(silent
-                ? TryValidateProcessModeConnectionFromSettings(out var parseError)
-                : TryValidateProcessModeConnection(out parseError)))
+        if (!TryResolveProcessModeConnection(fromSettings: silent, out var connection, out var parseError))
         {
             if (!silent)
             {
@@ -1793,9 +1802,9 @@ public sealed class MainViewModel : ViewModelBase
                 SetFooterLog(message);
             }));
             await _processModeService.TryRestoreAsync(
-                ProcessModeConnectionType.Vless,
-                TryGetProcessModeProxyProfile(silent),
-                null,
+                connection.Type,
+                connection.Profile,
+                connection.AmneziaConfig,
                 localPort,
                 applications,
                 progress,
@@ -1848,9 +1857,7 @@ public sealed class MainViewModel : ViewModelBase
             return;
         }
 
-        if (!(silent
-                ? TryValidateProcessModeConnectionFromSettings(out var parseError)
-                : TryValidateProcessModeConnection(out parseError)))
+        if (!TryResolveProcessModeConnection(fromSettings: silent, out var connection, out var parseError))
         {
             if (!silent)
             {
@@ -1893,9 +1900,9 @@ public sealed class MainViewModel : ViewModelBase
                 SetFooterLog(message);
             }));
             await _processModeService.StartAsync(
-                ProcessModeConnectionType.Vless,
-                TryGetProcessModeProxyProfile(silent),
-                null,
+                connection.Type,
+                connection.Profile,
+                connection.AmneziaConfig,
                 localPort,
                 applications,
                 progress,
@@ -1948,7 +1955,9 @@ public sealed class MainViewModel : ViewModelBase
     {
         var isRunning = _processModeService.IsRunning;
         var address = _processModeService.LocalProxyAddress;
-        var tunnelLabel = "VLESS+XUDP";
+        var tunnelLabel = _processModeService.ActiveConnectionType == ProcessModeConnectionType.Amnezia
+            ? "AmneziaWG"
+            : "VLESS+XUDP";
 
         if (!isRunning)
         {
@@ -2297,12 +2306,20 @@ public sealed class MainViewModel : ViewModelBase
     {
         ProcessModeProxyConfigs.Clear();
 
-        foreach (var config in SavedProxyConfigs.Where(x =>
-                     string.Equals(x.Protocol, "vless", StringComparison.OrdinalIgnoreCase)))
+        foreach (var config in SavedProxyConfigs.Where(x => IsProcessModeProtocol(x.Protocol)))
         {
             ProcessModeProxyConfigs.Add(config);
         }
     }
+
+    private static bool IsProcessModeProtocol(string? protocol) =>
+        string.Equals(protocol, "vless", StringComparison.OrdinalIgnoreCase)
+        || VpnConfigStorage.IsVpnProtocol(protocol);
+
+    private static ProcessModeConnectionType GetProcessModeConnectionType(string? protocol) =>
+        VpnConfigStorage.IsVpnProtocol(protocol)
+            ? ProcessModeConnectionType.Amnezia
+            : ProcessModeConnectionType.Vless;
 
     private void SyncProcessModeProxyConfigSelection()
     {
@@ -2320,7 +2337,7 @@ public sealed class MainViewModel : ViewModelBase
         if (selected != null)
         {
             ProcessModeLink = selected.Link;
-            ProcessModeConnectionType = ProcessModeConnectionType.Vless;
+            ProcessModeConnectionType = GetProcessModeConnectionType(selected.Protocol);
         }
 
         _isSyncingProcessModeConfig = false;
@@ -2332,7 +2349,7 @@ public sealed class MainViewModel : ViewModelBase
         _isSyncingProcessModeConfig = true;
         _settings.SelectedProcessModeConfigId = config.Id;
         ProcessModeLink = config.Link;
-        ProcessModeConnectionType = ProcessModeConnectionType.Vless;
+        ProcessModeConnectionType = GetProcessModeConnectionType(config.Protocol);
 
         if (updateSelection && !ReferenceEquals(SelectedProcessModeProxyConfig, config))
         {
@@ -2801,6 +2818,8 @@ public sealed class MainViewModel : ViewModelBase
                 isHealthy: result.IsReachable,
                 isUnreachable: !result.IsReachable,
                 pingMs: result.LatencyMs);
+
+            RefreshListsFallbackProxy();
         }
         catch (OperationCanceledException)
         {
@@ -2861,6 +2880,7 @@ public sealed class MainViewModel : ViewModelBase
         _isProxyHealthy = false;
         _isProxyUnreachable = false;
         _proxyPingMs = null;
+        RefreshListsFallbackProxy();
         OnPropertyChanged(nameof(IsProxyHealthy));
         OnPropertyChanged(nameof(IsProxyUnreachable));
     }
@@ -2921,6 +2941,7 @@ public sealed class MainViewModel : ViewModelBase
         _isProcessModeUdpSupported = result.UdpSupported;
         _isDiscordReachable = result.DiscordReachable;
         _processModePingMs = result.LatencyMs;
+        RefreshListsFallbackProxy();
 
         if (_processModeService.IsRunning)
         {
@@ -2948,6 +2969,28 @@ public sealed class MainViewModel : ViewModelBase
         _processModePingMs = null;
         OnPropertyChanged(nameof(IsProcessModeHealthy));
         OnPropertyChanged(nameof(IsProcessModeUnreachable));
+        RefreshListsFallbackProxy();
+    }
+
+    // Любой работающий локальный прокси годится для загрузки списков, если GitHub недоступен напрямую
+    private void RefreshListsFallbackProxy()
+    {
+        Uri? proxy = null;
+        if (_isProxyHealthy && IsAnyLocalProxyRunning())
+        {
+            proxy = new Uri($"http://127.0.0.1:{GetActiveLocalProxyPort()}");
+        }
+        // Пинг есть — TCP через Process Mode ходит, даже если Discord недоступен
+        else if (_processModePingMs != null && _processModeService.IsRunning)
+        {
+            proxy = new Uri($"socks5://127.0.0.1:{_processModeService.LocalPort}");
+        }
+
+        _domainListService.FallbackProxy = proxy;
+        if (proxy != null && IsListsDownloadPending)
+        {
+            _ = RetryListsDownloadThroughProxyAsync();
+        }
     }
 
     private async Task UpdateListsAsync(bool showWarningOnError = true, bool reEnableUi = true)
@@ -2973,7 +3016,9 @@ public sealed class MainViewModel : ViewModelBase
         {
             AppLog.Error(ex, "Ошибка обновления списков доменов");
             SetFooterLog($"Не удалось обновить списки: {ex.Message}");
-            if (showWarningOnError)
+
+            // Без локальных копий вместо диалога показываем плашку: скачаем через прокси
+            if (showWarningOnError && _domainListService.HasCachedLists())
             {
                 RunOnUiThread(() =>
                     UiHostContext.Current.ShowMessage(
@@ -2986,10 +3031,38 @@ public sealed class MainViewModel : ViewModelBase
         {
             EndComponentUpdate();
 
+            var pending = !_domainListService.HasCachedLists();
+            RunOnUiThread(() => IsListsDownloadPending = pending);
+
             if (reEnableUi)
             {
                 await RunOnUiThreadAsync(() => IsBusy = false).ConfigureAwait(false);
             }
+        }
+    }
+
+    private async Task RetryListsDownloadThroughProxyAsync()
+    {
+        if (Interlocked.Exchange(ref _isListsProxyRetryRunning, 1) != 0)
+        {
+            return;
+        }
+
+        try
+        {
+            AppLog.Info("Прокси работает, а списков нет — пробуем скачать их через прокси");
+            await UpdateListsAsync(showWarningOnError: false, reEnableUi: false).ConfigureAwait(false);
+
+            // «Применить» нажимали без списков — доводим до конца
+            if (_domainListService.HasCachedLists() && _applyPacAfterListsDownload)
+            {
+                _applyPacAfterListsDownload = false;
+                await ApplyAsync(silent: true).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            Volatile.Write(ref _isListsProxyRetryRunning, 0);
         }
     }
 
@@ -3125,6 +3198,12 @@ public sealed class MainViewModel : ViewModelBase
                     ? $"PAC применён: {pacUrl} · весь трафик через прокси"
                     : $"PAC применён: {pacUrl} · {pac.Value.DomainsCount} доменов, {pac.Value.SubnetsCount} подсетей");
             }).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (!_domainListService.HasCachedLists())
+        {
+            AppLog.Error(ex, "PAC не применён: нет списков доменов");
+            _applyPacAfterListsDownload = true;
+            SetFooterLog("PAC применится автоматически, когда списки скачаются через прокси");
         }
         catch (Exception ex)
         {
@@ -3841,8 +3920,6 @@ public sealed class MainViewModel : ViewModelBase
     {
         UpdateProcessModePreferences();
 
-        _settings.ProcessModeConnectionType = ProcessModeConnectionType.Vless;
-
         if (SelectedProcessModeProxyConfig != null)
         {
             _settings.SelectedProcessModeConfigId = SelectedProcessModeProxyConfig.Id;
@@ -3865,7 +3942,7 @@ public sealed class MainViewModel : ViewModelBase
     private void UpdateProcessModePreferences()
     {
         _settings.ProcessModeLink = ProcessModeLink.Trim();
-        _settings.ProcessModeConnectionType = ProcessModeConnectionType.Vless;
+        _settings.ProcessModeConnectionType = ProcessModeConnectionType;
 
         if (SelectedProcessModeProxyConfig != null)
         {
@@ -3881,129 +3958,59 @@ public sealed class MainViewModel : ViewModelBase
         _settings.ProcessModeApplications = ProcessModeApplications.ToList();
     }
 
-    private bool HasProcessModeConfig() =>
-        SelectedProcessModeProxyConfig != null
-        || ProcessModeConnectionValidator.TryValidate(
-            ProcessModeConnectionType.Vless,
-            ProcessModeLink,
-            out _,
-            out _);
+    private bool HasProcessModeConfig() => TryResolveProcessModeConnection(fromSettings: false, out _, out _);
 
-    private bool HasProcessModeConfigFromSettings()
+    private bool HasProcessModeConfigFromSettings() => TryResolveProcessModeConnection(fromSettings: true, out _, out _);
+
+    /// <summary> Подключение Process Mode из выбранного сохранённого конфига (VLESS или AmneziaWG) либо из ссылки vless:// </summary>
+    /// <param name="fromSettings"> Брать выбор из сохранённых настроек, а не из текущего состояния UI </param>
+    private bool TryResolveProcessModeConnection(bool fromSettings, out ProcessModeConnection connection, out string error)
     {
-        if (_settings.SavedProxyConfigs.Any(x =>
-                x.Id == _settings.SelectedProcessModeConfigId
-                && string.Equals(x.Protocol, "vless", StringComparison.OrdinalIgnoreCase)))
+        connection = default;
+
+        string? configId;
+        string? protocol;
+        string? link;
+        if (fromSettings)
         {
+            var saved = _settings.SavedProxyConfigs.FirstOrDefault(x =>
+                x.Id == _settings.SelectedProcessModeConfigId && IsProcessModeProtocol(x.Protocol));
+            (configId, protocol, link) = (saved?.Id, saved?.Protocol, saved?.Link ?? _settings.ProcessModeLink);
+        }
+        else
+        {
+            var selected = SelectedProcessModeProxyConfig;
+            (configId, protocol, link) = (selected?.Id, selected?.Protocol, selected?.Link ?? ProcessModeLink);
+        }
+
+        if (VpnConfigStorage.IsVpnProtocol(protocol))
+        {
+            if (!VpnConfigStorage.TryRead(configId!, out var amneziaConfig, out _, out error))
+            {
+                return false;
+            }
+
+            connection = new ProcessModeConnection(ProcessModeConnectionType.Amnezia, null, amneziaConfig);
             return true;
         }
 
-        return ProcessModeConnectionValidator.TryValidate(
-            ProcessModeConnectionType.Vless,
-            _settings.ProcessModeLink,
-            out _,
-            out _);
-    }
-
-    private bool TryValidateProcessModeConnectionFromSettings(out string error)
-    {
-        error = string.Empty;
-
-        if (_settings.SavedProxyConfigs.FirstOrDefault(x => x.Id == _settings.SelectedProcessModeConfigId) is { } saved
-            && string.Equals(saved.Protocol, "vless", StringComparison.OrdinalIgnoreCase))
+        if (!ProcessModeConnectionValidator.TryValidate(ProcessModeConnectionType.Vless, link ?? string.Empty, out var profile, out error))
         {
-            return ProcessModeConnectionValidator.TryValidate(
-                ProcessModeConnectionType.Vless,
-                saved.Link,
-                out _,
-                out error);
+            return false;
         }
 
-        return ProcessModeConnectionValidator.TryValidate(
-            ProcessModeConnectionType.Vless,
-            _settings.ProcessModeLink,
-            out _,
-            out error);
+        connection = new ProcessModeConnection(ProcessModeConnectionType.Vless, profile, null);
+        return true;
     }
 
-    private bool TryValidateProcessModeConnection(out string error)
-    {
-        error = string.Empty;
-
-        if (SelectedProcessModeProxyConfig != null)
-        {
-            return ProcessModeConnectionValidator.TryValidate(
-                ProcessModeConnectionType.Vless,
-                SelectedProcessModeProxyConfig.Link,
-                out _,
-                out error);
-        }
-
-        return ProcessModeConnectionValidator.TryValidate(
-            ProcessModeConnectionType.Vless,
-            ProcessModeLink,
-            out _,
-            out error);
-    }
-
-    private ProxyProfile? TryGetProcessModeProxyProfile(bool fromSettings = false)
-    {
-        if (fromSettings)
-        {
-            if (_settings.SavedProxyConfigs.FirstOrDefault(x => x.Id == _settings.SelectedProcessModeConfigId) is { } saved
-                && string.Equals(saved.Protocol, "vless", StringComparison.OrdinalIgnoreCase))
-            {
-                return ProcessModeConnectionValidator.TryValidate(
-                    ProcessModeConnectionType.Vless,
-                    saved.Link,
-                    out var profile,
-                    out _)
-                    ? profile
-                    : null;
-            }
-
-            return ProcessModeConnectionValidator.TryValidate(
-                ProcessModeConnectionType.Vless,
-                _settings.ProcessModeLink,
-                out var settingsProfile,
-                out _)
-                ? settingsProfile
-                : null;
-        }
-
-        if (SelectedProcessModeProxyConfig != null)
-        {
-            return ProcessModeConnectionValidator.TryValidate(
-                ProcessModeConnectionType.Vless,
-                SelectedProcessModeProxyConfig.Link,
-                out var selectedProfile,
-                out _)
-                ? selectedProfile
-                : null;
-        }
-
-        return ProcessModeConnectionValidator.TryValidate(
-            ProcessModeConnectionType.Vless,
-            ProcessModeLink,
-            out var linkProfile,
-            out _)
-            ? linkProfile
-            : null;
-    }
-
-    private string? TryGetProcessModeAmneziaConfig(bool fromSettings = false)
-    {
-        var connectionType = fromSettings ? _settings.ProcessModeConnectionType : ProcessModeConnectionType;
-
-        if (connectionType != ProcessModeConnectionType.Amnezia)
-        {
-            return null;
-        }
-
-        return AmneziaConfigStorage.TryReadStored(out var config, out _, out _)
-            ? config
-            : null;
-    }
+    /// <summary> Параметры запуска Process Mode </summary>
+    /// <param name="Type"> <see cref="ProcessModeConnectionType"/> </param>
+    /// <param name="Profile"> <see cref="ProxyProfile"/> </param>
+    /// <param name="AmneziaConfig"> Текст конфига AmneziaWG </param>
+    private readonly record struct ProcessModeConnection(
+        ProcessModeConnectionType Type,
+        ProxyProfile? Profile,
+        string? AmneziaConfig);
 
     public bool TryImportAmneziaConfigFile(string path, bool showErrors = true)
     {

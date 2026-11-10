@@ -229,8 +229,8 @@ public static class ComponentDownloadScriptLauncher
             if ($LASTEXITCODE -ne 0) { throw "GitHub API failed" }
             $release = $releaseJson | ConvertFrom-Json
             $tag = $release.tag_name
-            $asset = $release.assets | Where-Object { $_.name -like "*{{arch}}*.tar.gz" } | Select-Object -First 1
-            if (-not $asset) { throw "wireproxy {{arch}} tar.gz not found in $tag" }
+            $asset = $release.assets | Where-Object { $_.name -like "*{{arch}}*.zip" -or $_.name -like "*{{arch}}*.tar.gz" } | Select-Object -First 1
+            if (-not $asset) { throw "wireproxy {{arch}} archive not found in $tag" }
 
             $archive = Join-Path $bin $asset.name
             $url = "https://github.com/bropines/awg-wireproxy/releases/download/$tag/$($asset.name)"
@@ -242,15 +242,15 @@ public static class ComponentDownloadScriptLauncher
 
             Remove-Item $extract -Recurse -Force -ErrorAction SilentlyContinue
             New-Item -ItemType Directory -Force -Path $extract | Out-Null
-            tar -xzf $archive -C $extract
-            if ($LASTEXITCODE -ne 0) { throw "tar extract failed" }
+            tar -xf $archive -C $extract
+            if ($LASTEXITCODE -ne 0) { throw "archive extract failed" }
 
             $exe = Get-ChildItem $extract -Recurse -Filter "wireproxy.exe" | Select-Object -First 1
             if (-not $exe) { throw "wireproxy.exe not found in archive" }
 
             Copy-Item $exe.FullName (Join-Path $bin "wireproxy.exe") -Force
             Set-Content -Path (Join-Path $bin "awg-wireproxy-version.txt") -Value $tag -Encoding UTF8
-            Set-Content -Path (Join-Path $bin "awg-wireproxy.capability") -Value "awg-wireproxy-v1" -Encoding UTF8
+            Set-Content -Path (Join-Path $bin "awg-wireproxy.capability") -Value "{{AwgWireproxyInstaller.CapabilityMarker}}" -Encoding UTF8
 
             Remove-Item $archive -Force
             Remove-Item $extract -Recurse -Force

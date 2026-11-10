@@ -25,27 +25,40 @@ public sealed class DomainListService : IDisposable
     private readonly CancellationTokenSource _disposeCts = new();
     private int _disposeState;
     private int _listSourceIndex;
+    private HttpClient? _proxyHttpClient;
+    private Uri? _proxyHttpClientUri;
 
     public DomainListService()
     {
-        _httpClient = CreateHttpClient();
+        // Списки — небольшие текстовые файлы: заблокированный источник не должен держать минутами
+        _httpClient = CreateHttpClient(null, TimeSpan.FromSeconds(30));
         _cacheDirectory = AppPaths.ListsDirectory;
         _lastUpdateFile = Path.Combine(_cacheDirectory, ".last-update");
 
         AppPaths.EnsureRoot();
     }
 
-    private static HttpClient CreateHttpClient()
+    /// <summary> Рабочий локальный прокси (http:// или socks5://) для загрузки списков, если GitHub и jsDelivr недоступны напрямую </summary>
+    public Uri? FallbackProxy { get; set; }
+
+    private static HttpClient CreateHttpClient(IWebProxy? proxy, TimeSpan timeout)
     {
         var handler = new SocketsHttpHandler
         {
             AutomaticDecompression = DecompressionMethods.All,
-            EnableMultipleHttp2Connections = true
+            EnableMultipleHttp2Connections = true,
+            ConnectTimeout = TimeSpan.FromSeconds(10)
         };
+
+        if (proxy != null)
+        {
+            handler.Proxy = proxy;
+            handler.UseProxy = true;
+        }
 
         var client = new HttpClient(handler)
         {
-            Timeout = TimeSpan.FromMinutes(2),
+            Timeout = timeout,
             DefaultRequestVersion = HttpVersion.Version20,
             DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrLower
         };
@@ -182,7 +195,7 @@ public sealed class DomainListService : IDisposable
             || !HasCachedLists();
     }
 
-    private bool HasCachedLists()
+    public bool HasCachedLists()
     {
         return ServiceListDefinition.All
             .SelectMany(x => x.DomainFiles.Concat(x.SubnetFiles))
@@ -190,48 +203,81 @@ public sealed class DomainListService : IDisposable
             .All(file => File.Exists(GetCachePath(file)));
     }
 
+    // Источники: 0 — GitHub напрямую, 1 — jsDelivr напрямую, 2 — GitHub через локальный прокси
+    private const int ProxySourceIndex = 2;
+
     private async Task DownloadFileAsync(string relativePath, CancellationToken cancellationToken)
     {
-        var normalizedPath = relativePath.Replace('\\', '/');
+        var url = relativePath.Replace('\\', '/');
+        var preferred = _listSourceIndex;
+        Exception? lastError = null;
 
-        if (_listSourceIndex == 1)
+        // Сначала источник, сработавший последним, затем остальные по порядку
+        foreach (var index in new[] { preferred, 0, 1, ProxySourceIndex }.Distinct())
         {
-            await DownloadFileFromSourceAsync(MirrorListBaseUrl, relativePath, normalizedPath, cancellationToken);
-            return;
-        }
+            var client = index == ProxySourceIndex ? GetProxyHttpClient() : _httpClient;
+            if (client == null)
+            {
+                continue;
+            }
 
-        try
-        {
-            await DownloadFileFromSourceAsync(GitHubListBaseUrl, relativePath, normalizedPath, cancellationToken);
-        }
-        catch (Exception githubError)
-        {
-            AppLog.Warning(githubError, $"Загрузка {relativePath} с GitHub не удалась, пробуем jsDelivr...");
+            var baseUrl = index == 1 ? MirrorListBaseUrl : GitHubListBaseUrl;
 
             try
             {
-                await DownloadFileFromSourceAsync(MirrorListBaseUrl, relativePath, normalizedPath, cancellationToken);
-                _listSourceIndex = 1;
-                AppLog.Info($"Список {relativePath} загружен через jsDelivr. Дальнейшая загрузка в этом сеансе — только через jsDelivr");
+                await DownloadFileFromUrlAsync(client, baseUrl + url, relativePath, cancellationToken);
+                if (index != preferred)
+                {
+                    _listSourceIndex = index;
+                    AppLog.Info($"Список {relativePath} загружен через {DescribeSource(index)}. Дальнейшая загрузка в этом сеансе — сначала через него");
+                }
+
+                return;
             }
-            catch (Exception mirrorError)
+            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
             {
-                var message = $"Не удалось загрузить {relativePath}: GitHub и jsDelivr недоступны";
-                throw new InvalidOperationException(message, mirrorError);
+                lastError = ex;
+                AppLog.Warning(ex, $"Загрузка {relativePath} через {DescribeSource(index)} не удалась");
             }
         }
+
+        // Прямой доступ не работает — в следующий раз начинаем с прокси, если он появится
+        _listSourceIndex = ProxySourceIndex;
+
+        var message = FallbackProxy != null
+            ? $"Не удалось загрузить {relativePath}: GitHub и jsDelivr недоступны ни напрямую, ни через прокси"
+            : $"Не удалось загрузить {relativePath}: GitHub и jsDelivr недоступны";
+        throw new InvalidOperationException(message, lastError);
     }
 
-    private Task DownloadFileFromSourceAsync(
-        string baseUrl,
-        string relativePath,
-        string normalizedPath,
-        CancellationToken cancellationToken) =>
-        DownloadFileFromUrlAsync(baseUrl + normalizedPath, relativePath, cancellationToken);
-
-    private async Task DownloadFileFromUrlAsync(string url, string relativePath, CancellationToken cancellationToken)
+    private static string DescribeSource(int index) => index switch
     {
-        var response = await _httpClient.GetAsync(url, cancellationToken);
+        0 => "GitHub",
+        1 => "jsDelivr",
+        _ => "GitHub (через локальный прокси)"
+    };
+
+    private HttpClient? GetProxyHttpClient()
+    {
+        var proxy = FallbackProxy;
+        if (proxy == null)
+        {
+            return null;
+        }
+
+        if (_proxyHttpClient == null || _proxyHttpClientUri != proxy)
+        {
+            _proxyHttpClient?.Dispose();
+            _proxyHttpClient = CreateHttpClient(new WebProxy(proxy), TimeSpan.FromMinutes(2));
+            _proxyHttpClientUri = proxy;
+        }
+
+        return _proxyHttpClient;
+    }
+
+    private async Task DownloadFileFromUrlAsync(HttpClient client, string url, string relativePath, CancellationToken cancellationToken)
+    {
+        using var response = await client.GetAsync(url, cancellationToken);
         response.EnsureSuccessStatusCode();
 
         var content = await response.Content.ReadAsByteArrayAsync(cancellationToken);
@@ -343,6 +389,7 @@ public sealed class DomainListService : IDisposable
         }
 
         _httpClient.Dispose();
+        _proxyHttpClient?.Dispose();
         _updateLock.Dispose();
         _disposeCts.Dispose();
     }

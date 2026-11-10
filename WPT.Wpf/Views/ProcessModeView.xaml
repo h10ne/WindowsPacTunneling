@@ -112,7 +112,7 @@
 
 
 
-                <TextBlock Text="Конфигурация VLESS" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
+                <TextBlock Text="Конфигурация VLESS или AmneziaWG" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
 
                 <ctrl:ProxyConfigSelector ItemsSource="{Binding ProcessModeProxyConfigs}"
 

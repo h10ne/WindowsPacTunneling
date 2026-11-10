@@ -11,7 +11,8 @@ public static class AwgWireproxyInstaller
 {
     private const string Repository = "bropines/awg-wireproxy";
 
-    private const string CapabilityMarker = "awg-wireproxy-v1";
+    // v2: нужен awg-wireproxy >= 2.1.0 (UDP ASSOCIATE для Process Mode, AWG 2.0/3.x). Смена маркера переустанавливает старые сборки
+    internal const string CapabilityMarker = "awg-wireproxy-v2";
 
     public static string ExecutablePath => Path.Combine(AppPaths.BinDirectory, "wireproxy.exe");
 
@@ -124,7 +125,14 @@ public static class AwgWireproxyInstaller
             }
 
             Directory.CreateDirectory(extractDirectory);
-            ExtractTarGz(archivePath, extractDirectory);
+            if (archivePath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+            {
+                ZipFile.ExtractToDirectory(archivePath, extractDirectory, overwriteFiles: true);
+            }
+            else
+            {
+                ExtractTarGz(archivePath, extractDirectory);
+            }
 
             var extractedExe = Directory
                 .EnumerateFiles(extractDirectory, "wireproxy.exe", SearchOption.AllDirectories)
@@ -243,9 +251,11 @@ public static class AwgWireproxyInstaller
             _ => "windows_amd64"
         };
 
+        // С 2.1.0 Windows-сборки выкладываются в .zip, раньше были .tar.gz
         var asset = release.Assets?.FirstOrDefault(x =>
             x.Name.Contains(arch, StringComparison.OrdinalIgnoreCase)
-            && x.Name.EndsWith(".tar.gz", StringComparison.OrdinalIgnoreCase));
+            && (x.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)
+                || x.Name.EndsWith(".tar.gz", StringComparison.OrdinalIgnoreCase)));
 
         if (asset == null || string.IsNullOrWhiteSpace(asset.BrowserDownloadUrl))
         {

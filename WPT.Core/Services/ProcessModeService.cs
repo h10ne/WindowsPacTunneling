@@ -27,8 +27,13 @@ public sealed class ProcessModeService : IDisposable
     public void Prepare(int localPort)
     {
         _proxyService.Prepare(localPort);
-        _awgProxyService.Prepare(localPort);
+        _awgProxyService.Prepare(AwgUpstreamPort(localPort));
     }
+
+    // Amnezia: Redirector → sing-box (sniff SNI) → wireproxy. Redirector отдаёт IP из системного DNS,
+    // а он бывает fake-IP (198.18.x.x) или подменён провайдером; у wireproxy нет sniffing, и такой IP в туннеле никуда не ведёт
+    // ponytail: соседний порт фиксирован, искать свободный — если начнутся коллизии
+    private static int AwgUpstreamPort(int localPort) => localPort + 1;
 
     public async Task StartAsync(
         ProcessModeConnectionType connectionType,
@@ -87,7 +92,22 @@ public sealed class ProcessModeService : IDisposable
                     throw new ArgumentException("Не указана конфигурация Amnezia.", nameof(amneziaConfig));
                 }
 
-                await _awgProxyService.StartAsync(amneziaConfig, localPort, forPacProxy: false, progress, cancellationToken);
+                var upstreamPort = AwgUpstreamPort(localPort);
+                await _awgProxyService.StartAsync(amneziaConfig, upstreamPort, forPacProxy: false, progress, cancellationToken);
+                try
+                {
+                    await _proxyService.StartAsync(
+                        new ProxyProfile { Protocol = "socks", Server = "127.0.0.1", ServerPort = upstreamPort },
+                        localPort,
+                        progress: null,
+                        cancellationToken);
+                }
+                catch
+                {
+                    _awgProxyService.Stop();
+                    throw;
+                }
+
                 _activeConnectionType = ProcessModeConnectionType.Amnezia;
                 break;
 
@@ -134,7 +154,7 @@ public sealed class ProcessModeService : IDisposable
 
         var proxyRunning = connectionType switch
         {
-            ProcessModeConnectionType.Amnezia => _awgProxyService.IsRunning,
+            ProcessModeConnectionType.Amnezia => _awgProxyService.IsRunning && _proxyService.IsRunning,
             _ => _proxyService.IsRunning
         };
 
@@ -198,18 +218,13 @@ public sealed class ProcessModeService : IDisposable
 
     private bool IsLocalProxyRunning() => _activeConnectionType switch
     {
-        ProcessModeConnectionType.Amnezia => _awgProxyService.IsRunning,
+        ProcessModeConnectionType.Amnezia => _awgProxyService.IsRunning && _proxyService.IsRunning,
         ProcessModeConnectionType.Shadowsocks => _proxyService.IsRunning,
         ProcessModeConnectionType.Vless => _proxyService.IsRunning,
         _ => false
     };
 
-    private int GetActiveLocalPort() => _activeConnectionType switch
-    {
-        ProcessModeConnectionType.Amnezia => _awgProxyService.LocalPort,
-        ProcessModeConnectionType.Shadowsocks => _proxyService.LocalPort,
-        ProcessModeConnectionType.Vless => _proxyService.LocalPort,
-        _ => _proxyService.LocalPort > 0 ? _proxyService.LocalPort : _awgProxyService.LocalPort
-    };
+    // Во всех режимах Redirector смотрит в sing-box
+    private int GetActiveLocalPort() => _proxyService.LocalPort;
 
 }

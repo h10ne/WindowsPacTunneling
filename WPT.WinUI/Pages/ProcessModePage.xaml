@@ -13,7 +13,7 @@
         <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
             <StackPanel Spacing="16">
                 <StackPanel Spacing="4">
-                    <TextBlock Text="Конфигурация VLESS" Style="{StaticResource CaptionText}" />
+                    <TextBlock Text="Конфигурация VLESS или AmneziaWG" Style="{StaticResource CaptionText}" />
                     <ctrl:ProxyConfigSelector ItemsSource="{Binding ProcessModeProxyConfigs}"
                                               SelectedItem="{Binding SelectedProcessModeProxyConfig, Mode=TwoWay}"
                                               DeleteCommand="{Binding DeleteSavedProxyConfigCommand}"

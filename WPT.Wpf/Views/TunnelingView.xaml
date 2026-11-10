@@ -162,6 +162,23 @@
 
                     <StackPanel IsEnabled="{Binding IsTunnelingListsEnabled}">
 
+                <Border Style="{StaticResource InfoBar}"
+                        Margin="0,0,0,12"
+                        Visibility="{Binding IsListsDownloadPending, Converter={StaticResource BoolToVis}}">
+
+                    <StackPanel>
+
+                        <TextBlock Text="Списки доменов не скачаны" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,4" />
+
+                        <TextBlock Text="GitHub недоступен напрямую. Списки скачаются автоматически через первый заработавший прокси (VLESS, AmneziaWG и др.), а PAC применится сам, если вы уже нажали «Применить»."
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   FontSize="12"
+                                   TextWrapping="Wrap" />
+
+                    </StackPanel>
+
+                </Border>
+
 
 
                 <Border Style="{StaticResource InfoBar}"

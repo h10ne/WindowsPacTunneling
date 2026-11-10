@@ -1,9 +1,21 @@
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace WPT.Core.Services;
 
-public static class AwgWireproxyConfigBuilder
+public static partial class AwgWireproxyConfigBuilder
 {
+    /// <summary> Приводит конфиг AmneziaWG к формату, который принимает wireproxy </summary>
+    /// <param name="wireGuardConfig"> Текст конфига AmneziaWG </param>
+    // Клиент Amnezia экспортирует булевы параметры AWG 3.x как on/off, а wireproxy ждёт true/false
+    public static string NormalizeWireGuardConfig(string wireGuardConfig) =>
+        AwgBoolOptionRegex().Replace(
+            wireGuardConfig,
+            m => m.Groups[1].Value + (m.Groups[2].Value.Equals("on", StringComparison.OrdinalIgnoreCase) ? "true" : "false"));
+
+    [GeneratedRegex(@"^(\s*(?:RandomTrailers|DisableCookies)\s*=\s*)(on|off)(?=\s*(?:#.*)?$)", RegexOptions.IgnoreCase | RegexOptions.Multiline)]
+    private static partial Regex AwgBoolOptionRegex();
+
     public static string BuildForProcessMode(string wireGuardConfigPath, int localPort)
     {
         return Build(wireGuardConfigPath, localPort, useHttpProxy: false);

@@ -51,6 +51,11 @@
                                Style="{StaticResource CaptionText}"
                                TextWrapping="Wrap" />
                 </Border>
+                <InfoBar IsOpen="{Binding IsListsDownloadPending}"
+                         IsClosable="False"
+                         Severity="Warning"
+                         Title="Списки доменов не скачаны"
+                         Message="GitHub недоступен напрямую. Списки скачаются автоматически через первый заработавший прокси (VLESS, AmneziaWG и др.), а PAC применится сам, если вы уже нажали «Применить»." />
                 <StackPanel Spacing="12"
                             Opacity="{Binding IsTunnelingListsEnabled, Converter={StaticResource BoolToOpacity}}"
                             IsHitTestVisible="{Binding IsTunnelingListsEnabled}">

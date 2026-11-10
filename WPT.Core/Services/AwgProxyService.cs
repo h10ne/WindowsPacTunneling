@@ -70,7 +70,10 @@ public sealed class AwgProxyService : IDisposable
         }
 
         AppPaths.EnsureRoot();
-        await File.WriteAllTextAsync(_wireGuardConfigPath, wireGuardConfig, cancellationToken);
+        await File.WriteAllTextAsync(
+            _wireGuardConfigPath,
+            AwgWireproxyConfigBuilder.NormalizeWireGuardConfig(wireGuardConfig),
+            cancellationToken);
 
         var config = forPacProxy
             ? AwgWireproxyConfigBuilder.BuildForProxy(_wireGuardConfigPath, localPort)

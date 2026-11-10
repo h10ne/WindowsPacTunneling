@@ -1,5 +1,5 @@
 using System.Diagnostics;
-using System.Net.Sockets;
+using System.Net.NetworkInformation;
 using WPT.Core.Models;
 
 namespace WPT.Core.Services;
@@ -171,16 +171,10 @@ public sealed class LocalProxyService : IDisposable
             return false;
         }
 
-        try
-        {
-            using var client = new TcpClient();
-            var connectTask = client.ConnectAsync("127.0.0.1", port);
-            return connectTask.Wait(300) && client.Connected;
-        }
-        catch
-        {
-            return false;
-        }
+        // Без пробного подключения: брошенный по таймауту ConnectAsync падал в UnobservedTaskException
+        return IPGlobalProperties.GetIPGlobalProperties()
+            .GetActiveTcpListeners()
+            .Any(endpoint => endpoint.Port == port);
     }
 
     private void TryAdoptFromPidFile()

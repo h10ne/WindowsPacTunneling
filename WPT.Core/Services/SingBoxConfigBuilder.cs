@@ -90,6 +90,15 @@ public static class SingBoxConfigBuilder
             "vmess" => BuildVmessOutbound(profile),
             "trojan" => BuildTrojanOutbound(profile),
             "ss" => BuildShadowsocksOutbound(profile),
+            // Локальный upstream: Process Mode через AmneziaWG (wireproxy)
+            "socks" => new JsonObject
+            {
+                ["type"] = "socks",
+                ["tag"] = "proxy",
+                ["server"] = profile.Server,
+                ["server_port"] = profile.ServerPort,
+                ["version"] = "5"
+            },
             _ => throw new NotSupportedException($"Протокол {profile.Protocol} не поддерживается")
         };
 
