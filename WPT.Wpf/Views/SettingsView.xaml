@@ -50,7 +50,6 @@
 
                         <CheckBox Content="Запускать от имени администратора" IsChecked="{Binding RunAsAdministrator}" />
 
-                        <CheckBox Content="Запускать прокси со стартом приложения" IsChecked="{Binding StartProxyWithApp}" />
 
                         <CheckBox Content="Запускать Process Mode со стартом приложения" IsChecked="{Binding StartProcessModeWithApp}"
 

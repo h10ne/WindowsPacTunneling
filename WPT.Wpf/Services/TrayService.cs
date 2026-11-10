@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Forms;
 using WPT.Core;
 using WPT.Core.Services;
+using WPT.TraySupport;
 using WPT.ViewModels;
 using Application = System.Windows.Application;
 
@@ -13,6 +14,10 @@ public sealed class TrayService : IDisposable
     private readonly MainViewModel _viewModel;
     private readonly Window _window;
     private readonly NotifyIcon _notifyIcon;
+    private readonly ToolStripMenuItem _pacMenu;
+    private readonly ToolStripMenuItem _localProxyMenu;
+    private readonly ToolStripMenuItem? _processModeMenu;
+    private readonly ToolStripMenuItem _zapretMenu;
     private readonly ToolStripMenuItem _enableItem;
     private readonly ToolStripMenuItem _disableItem;
     private readonly ToolStripMenuItem _proxyStartItem;
@@ -35,13 +40,14 @@ public sealed class TrayService : IDisposable
         {
             Icon = icon ?? SystemIcons.Shield,
             Text = AppBranding.DisplayName,
-            Visible = false
+            // Иконка в трее всегда, а не только когда окно свёрнуто
+            Visible = true
         };
 
         var menu = new ContextMenuStrip();
         menu.Items.Add("Открыть", null, (_, _) => ShowMainWindow());
 
-        var proxyMenu = new ToolStripMenuItem("PAC");
+        var proxyMenu = _pacMenu = new ToolStripMenuItem("PAC");
         _enableItem = new ToolStripMenuItem("Включить", null, async (_, _) =>
         {
             ShowMainWindow();
@@ -57,7 +63,7 @@ public sealed class TrayService : IDisposable
         proxyMenu.DropDownItems.Add(_disableItem);
         menu.Items.Add(proxyMenu);
 
-        var localProxyMenu = new ToolStripMenuItem("Локальный прокси");
+        var localProxyMenu = _localProxyMenu = new ToolStripMenuItem("Локальный прокси");
         _proxyStartItem = new ToolStripMenuItem("Запустить", null, (_, _) =>
         {
             if (_viewModel.IsProxyRunning || _viewModel.IsBusy || !_viewModel.IsTrayProxyMenuEnabled)
@@ -84,7 +90,7 @@ public sealed class TrayService : IDisposable
 
         if (_viewModel.IsProcessModeUiVisible)
         {
-            var processModeMenu = new ToolStripMenuItem("Process Mode");
+            var processModeMenu = _processModeMenu = new ToolStripMenuItem("Process Mode");
             _processModeStartItem = new ToolStripMenuItem("Запустить", null, (_, _) =>
             {
                 if (_viewModel.IsProcessModeRunning
@@ -114,7 +120,7 @@ public sealed class TrayService : IDisposable
             menu.Items.Add(processModeMenu);
         }
 
-        var zapretMenu = new ToolStripMenuItem("Zapret");
+        var zapretMenu = _zapretMenu = new ToolStripMenuItem("Zapret");
         _zapretStartItem = new ToolStripMenuItem("Запустить", null, (_, _) =>
         {
             if (_viewModel.IsBypassRunning
@@ -148,6 +154,7 @@ public sealed class TrayService : IDisposable
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Выход", null, (_, _) => ExitApplication());
 
+        TrayMenuStyle.Apply(menu);
         _notifyIcon.ContextMenuStrip = menu;
         _notifyIcon.DoubleClick += (_, _) => ShowMainWindow();
 
@@ -184,6 +191,14 @@ public sealed class TrayService : IDisposable
 
     public void UpdateMenu()
     {
+        TrayMenuStyle.SetStatus(_pacMenu, _viewModel.IsPacActive);
+        TrayMenuStyle.SetStatus(_localProxyMenu, _viewModel.IsProxyRunning);
+        TrayMenuStyle.SetStatus(_zapretMenu, _viewModel.IsBypassRunning);
+        if (_processModeMenu != null)
+        {
+            TrayMenuStyle.SetStatus(_processModeMenu, _viewModel.IsProcessModeRunning);
+        }
+
         _enableItem.Enabled = !_viewModel.IsPacActive;
         _disableItem.Enabled = _viewModel.IsPacActive;
 
@@ -248,7 +263,6 @@ public sealed class TrayService : IDisposable
         _window.Show();
         _window.WindowState = WindowState.Normal;
         _window.Activate();
-        _notifyIcon.Visible = false;
     }
 
     public void MinimizeToTray(bool showNotification)

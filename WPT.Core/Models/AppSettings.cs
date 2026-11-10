@@ -30,8 +30,6 @@ public sealed class AppSettings
 
     public bool StartWithWindows { get; set; }
 
-    public bool StartProxyWithApp { get; set; }
-
     public bool StartProcessModeWithApp { get; set; }
 
     public bool StartMinimizedToTray { get; set; }

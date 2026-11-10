@@ -10,6 +10,10 @@ public sealed class TrayController : IDisposable
     private readonly ITrayWindow _window;
     private readonly MainViewModel _viewModel;
     private readonly AppTrayIcon _trayIcon;
+    private readonly ToolStripMenuItem _pacMenu;
+    private readonly ToolStripMenuItem _localProxyMenu;
+    private readonly ToolStripMenuItem? _processModeMenu;
+    private readonly ToolStripMenuItem _zapretMenu;
     private readonly ToolStripMenuItem _enableItem;
     private readonly ToolStripMenuItem _disableItem;
     private readonly ToolStripMenuItem _proxyStartItem;
@@ -33,7 +37,7 @@ public sealed class TrayController : IDisposable
         var menu = _trayIcon.ContextMenu;
         menu.Items.Add("Открыть", null, (_, _) => ShowMainWindow());
 
-        var proxyMenu = new ToolStripMenuItem("PAC");
+        var proxyMenu = _pacMenu = new ToolStripMenuItem("PAC");
         _enableItem = new ToolStripMenuItem("Включить", null, async (_, _) =>
         {
             ShowMainWindow();
@@ -49,7 +53,7 @@ public sealed class TrayController : IDisposable
         proxyMenu.DropDownItems.Add(_disableItem);
         menu.Items.Add(proxyMenu);
 
-        var localProxyMenu = new ToolStripMenuItem("Локальный прокси");
+        var localProxyMenu = _localProxyMenu = new ToolStripMenuItem("Локальный прокси");
         _proxyStartItem = new ToolStripMenuItem("Запустить", null, (_, _) =>
         {
             if (_viewModel.IsProxyRunning || _viewModel.IsBusy || !_viewModel.IsTrayProxyMenuEnabled)
@@ -76,7 +80,7 @@ public sealed class TrayController : IDisposable
 
         if (_viewModel.IsProcessModeUiVisible)
         {
-            var processModeMenu = new ToolStripMenuItem("Process Mode");
+            var processModeMenu = _processModeMenu = new ToolStripMenuItem("Process Mode");
             _processModeStartItem = new ToolStripMenuItem("Запустить", null, (_, _) =>
             {
                 if (_viewModel.IsProcessModeRunning
@@ -106,7 +110,7 @@ public sealed class TrayController : IDisposable
             menu.Items.Add(processModeMenu);
         }
 
-        var zapretMenu = new ToolStripMenuItem("Zapret");
+        var zapretMenu = _zapretMenu = new ToolStripMenuItem("Zapret");
         _zapretStartItem = new ToolStripMenuItem("Запустить", null, (_, _) =>
         {
             if (_viewModel.IsBypassRunning
@@ -139,6 +143,10 @@ public sealed class TrayController : IDisposable
 
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Выход", null, (_, _) => _exitApplication());
+        TrayMenuStyle.Apply(menu);
+        UpdateMenu();
+        // Иконка в трее всегда, а не только когда окно свёрнуто
+        _trayIcon.Visible = true;
 
         viewModel.PropertyChanged += (_, e) =>
         {
@@ -180,6 +188,14 @@ public sealed class TrayController : IDisposable
 
     public void UpdateMenu()
     {
+        TrayMenuStyle.SetStatus(_pacMenu, _viewModel.IsPacActive);
+        TrayMenuStyle.SetStatus(_localProxyMenu, _viewModel.IsProxyRunning);
+        TrayMenuStyle.SetStatus(_zapretMenu, _viewModel.IsBypassRunning);
+        if (_processModeMenu != null)
+        {
+            TrayMenuStyle.SetStatus(_processModeMenu, _viewModel.IsProcessModeRunning);
+        }
+
         _enableItem.Enabled = !_viewModel.IsPacActive;
         _disableItem.Enabled = _viewModel.IsPacActive;
 
@@ -224,7 +240,6 @@ public sealed class TrayController : IDisposable
     {
         _window.Show();
         _window.Activate();
-        _trayIcon.Visible = false;
     }
 
     public void MinimizeToTray(bool showNotification)

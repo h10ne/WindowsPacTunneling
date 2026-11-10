@@ -75,7 +75,6 @@ public sealed class MainViewModel : ViewModelBase
     private bool _isProcessModeStopping;
     private bool _isLocalProxyRunning;
     private bool _startWithWindows;
-    private bool _startProxyWithApp;
     private bool _startProcessModeWithApp;
     private bool _startBypassWithApp;
     private bool _runAsAdministrator;
@@ -137,7 +136,8 @@ public sealed class MainViewModel : ViewModelBase
 
         ApplyCommand = new RelayCommand(async () => await ApplyAsync(), () => !IsBusy);
         ShowPacCommand = new RelayCommand(async () => await ShowPacAsync(), () => !IsBusy);
-        DisablePacCommand = new RelayCommand(async () => await DisablePacAsync(), () => !IsBusy && IsPacActive);
+        // Отключить можно и «висящий» URL в системе, когда сервер не запущен
+        DisablePacCommand = new RelayCommand(async () => await DisablePacAsync(), () => !IsBusy && WindowsProxySettings.IsPacEnabled(out _));
         ToggleProxyCommand = new RelayCommand(async () => await ToggleProxyAsync(), () => !IsProxyOperating);
         SaveProxyConfigCommand = new RelayCommand(SaveProxyConfig, () => IsProxyEditingEnabled);
         SaveVpnConfigCommand = new RelayCommand(SaveVpnConfig, () => IsProxyEditingEnabled);
@@ -859,12 +859,6 @@ public sealed class MainViewModel : ViewModelBase
         set => SetProperty(ref _startWithWindows, value);
     }
 
-    public bool StartProxyWithApp
-    {
-        get => _startProxyWithApp;
-        set => SetProperty(ref _startProxyWithApp, value);
-    }
-
     public bool StartProcessModeWithApp
     {
         get => _startProcessModeWithApp;
@@ -1230,14 +1224,10 @@ public sealed class MainViewModel : ViewModelBase
                 await UpdateListsAsync(showWarningOnError: true, reEnableUi: false).ConfigureAwait(false);
             }
 
-            if (_settings.StartProxyWithApp && _settings.IsProxyActive)
+            // PAC восстанавливается, если был включён до выхода — как локальный прокси и Process Mode
+            if (_settings.IsProxyActive)
             {
                 await ApplyAsync(silent: true).ConfigureAwait(false);
-            }
-
-            if (_settings.IsProxyActive && !_settings.StartProxyWithApp)
-            {
-                SetFooterLog("PAC был активен. Нажмите «Применить» для повторной активации.");
             }
 
             if (_settings.StartBypassWithApp && _settings.IsBypassActive)
@@ -1468,7 +1458,6 @@ public sealed class MainViewModel : ViewModelBase
 
         StartWithWindows = _settings.StartWithWindows;
         RunAsAdministrator = _settings.RunAsAdministrator;
-        StartProxyWithApp = _settings.StartProxyWithApp;
         StartProcessModeWithApp = AppBranding.IsProcessModeUiVisible
             && _settings.RunAsAdministrator
             && _settings.StartProcessModeWithApp;
@@ -1552,7 +1541,9 @@ public sealed class MainViewModel : ViewModelBase
     public void RefreshPacState()
     {
         var systemEnabled = WindowsProxySettings.IsPacEnabled(out _);
-        IsPacActive = systemEnabled;
+        // После перезапуска WPT в системе остаётся URL на сервер, который ещё не поднят: это не «PAC включён».
+        // Настройка IsProxyActive ниже по-прежнему следует за системой — по ней восстанавливается PAC при старте
+        IsPacActive = systemEnabled && _pacHttpServer.IsRunning;
 
         if (systemEnabled != _settings.IsProxyActive)
         {
@@ -3214,12 +3205,12 @@ public sealed class MainViewModel : ViewModelBase
 
                 await PacStorageService.SaveAsync(pac.Value.Content).ConfigureAwait(false);
 
-                RunOnUiThread(() =>
-                {
-                    _pacHttpServer.SetPort(pacPort);
-                    _pacHttpServer.SetPacContent(pac.Value.Content);
-                    _pacHttpServer.Restart();
-                });
+                // Сервер должен слушать до записи URL в систему: браузеры скачивают PAC сразу по уведомлению.
+                // Раньше это уходило в очередь UI-потока, URL публиковался раньше перезапуска сервера,
+                // а ошибка запуска (порт занят) терялась — индикатор горел, PAC не раздавался
+                _pacHttpServer.SetPort(pacPort);
+                _pacHttpServer.SetPacContent(pac.Value.Content);
+                _pacHttpServer.Restart();
 
                 var pacUrl = _pacHttpServer.GetPacUrl(pac.Value.Hash);
                 WindowsProxySettings.EnablePac(pacUrl);
@@ -4158,7 +4149,6 @@ public sealed class MainViewModel : ViewModelBase
     {
         _settings.StartWithWindows = StartWithWindows;
         _settings.RunAsAdministrator = RunAsAdministrator;
-        _settings.StartProxyWithApp = StartProxyWithApp;
         _settings.StartProcessModeWithApp = AppBranding.IsProcessModeUiVisible
             && RunAsAdministrator
             && StartProcessModeWithApp;
@@ -4220,7 +4210,7 @@ public sealed class MainViewModel : ViewModelBase
 
     private void UpdateFooter()
     {
-        FooterRight = WindowsProxySettings.IsPacEnabled(out _) ? "PAC: вкл" : "PAC: выкл";
+        FooterRight = IsPacActive ? "PAC: вкл" : "PAC: выкл";
     }
 
     private void RunOnUiThread(Action action) => UiHostContext.Current.RunOnUiThread(action);

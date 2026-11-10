@@ -12,12 +12,13 @@
         <AssemblyName>WPT WPF</AssemblyName>
         <Product>WPT</Product>
         <AssemblyTitle>WPT</AssemblyTitle>
-        <Version>2.1.0</Version>
+        <Version>2.1.1</Version>
     </PropertyGroup>
 
     <ItemGroup>
         <ProjectReference Include="..\WPT.Core\WPT.Core.csproj" />
         <ProjectReference Include="..\WPT.ViewModels\WPT.ViewModels.csproj" />
+        <ProjectReference Include="..\WPT.TraySupport\WPT.TraySupport.csproj" />
     </ItemGroup>
 
     <ItemGroup>

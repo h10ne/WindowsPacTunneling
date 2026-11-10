@@ -19,8 +19,6 @@
                                       IsChecked="{Binding StartWithWindows, Mode=TwoWay}" />
                             <CheckBox Content="Запускать от имени администратора"
                                       IsChecked="{Binding RunAsAdministrator, Mode=TwoWay}" />
-                            <CheckBox Content="Запускать прокси со стартом приложения"
-                                      IsChecked="{Binding StartProxyWithApp, Mode=TwoWay}" />
                             <CheckBox Content="Запускать Process Mode со стартом приложения"
                                       IsChecked="{Binding StartProcessModeWithApp, Mode=TwoWay}"
                                       IsEnabled="{Binding IsStartProcessModeWithAppEnabled}"

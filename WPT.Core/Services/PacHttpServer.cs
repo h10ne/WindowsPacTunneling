@@ -110,7 +110,9 @@ public sealed class PacHttpServer : IDisposable
         }
     }
 
-    public string GetPacUrl(string hash) => $"http://127.0.0.1:{Port}/pac?hash={hash}";
+    // v — уникален на каждое применение: Chromium не перекачивает PAC, если URL в настройках не изменился,
+    // и после неудачной загрузки продолжал бы ходить напрямую
+    public string GetPacUrl(string hash) => $"http://127.0.0.1:{Port}/pac?hash={hash}&v={DateTime.UtcNow.Ticks:x}";
 
     private void StopInternal()
     {
