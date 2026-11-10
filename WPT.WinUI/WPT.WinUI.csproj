@@ -15,9 +15,11 @@
     <GenerateAppxPackageOnBuild>false</GenerateAppxPackageOnBuild>
     <AppxPackageSigningEnabled>false</AppxPackageSigningEnabled>
     <DisablePackagingProjectCapability>true</DisablePackagingProjectCapability>
+    <!-- MRT ищет resources.pri, затем <имя exe>.pri. С WPT.pri переименованный exe («WPT (1).exe» после скачивания) падал с XamlParseException -->
+    <ProjectPriFileName>resources.pri</ProjectPriFileName>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Version>2.0.0</Version>
+    <Version>2.0.1</Version>
     <Product>WPT</Product>
     <AssemblyTitle>WPT</AssemblyTitle>
   </PropertyGroup>
