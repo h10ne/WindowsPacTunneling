@@ -1,3 +1,5 @@
+using WPT.Core.Services;
+
 namespace WPT.ViewModels.Abstractions;
 
 public enum MessageDialogIcon
@@ -46,6 +48,11 @@ public interface IUiHost
     bool TryRestartElevated();
 
     string? PickOpenFile(string title, string filter);
+
+    /// <summary> Диалог выбора запущенных приложений с иконками. Вызывать из UI-потока </summary>
+    /// <param name="applications"> Кандидаты для выбора </param>
+    /// <returns> Имена выбранных exe, пусто при отмене </returns>
+    Task<IReadOnlyList<string>> PickRunningApplicationsAsync(IReadOnlyList<RunningApplication> applications);
 }
 
 public static class UiHostContext

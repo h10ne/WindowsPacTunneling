@@ -154,8 +154,8 @@ public sealed class MainViewModel : ViewModelBase
         RemoveIpCommand = new RelayCommand(p => RemoveCustomIp((string)p!));
         ToggleProcessModeCommand = new RelayCommand(async () => await ToggleProcessModeAsync(), () => !IsProcessModeOperating);
         AddProcessModeAppCommand = new RelayCommand(AddProcessModeApp);
+        PickRunningProcessCommand = new RelayCommand(PickRunningProcesses, () => IsProcessModeEditingEnabled);
         RemoveProcessModeAppCommand = new RelayCommand(p => RemoveProcessModeApp((string)p!));
-        PickRunningProcessCommand = new RelayCommand(_ => { });
         PickAmneziaConfigCommand = new RelayCommand(PickAmneziaConfigFile, () => IsProcessModeEditingEnabled);
         ClearAmneziaConfigCommand = new RelayCommand(ClearAmneziaConfig, () => IsProcessModeEditingEnabled && HasProcessModeAmneziaConfig);
         UpdateListsCommand = new RelayCommand(async () => await UpdateListsAsync());
@@ -1133,9 +1133,9 @@ public sealed class MainViewModel : ViewModelBase
 
     public RelayCommand AddProcessModeAppCommand { get; }
 
-    public RelayCommand RemoveProcessModeAppCommand { get; }
-
     public RelayCommand PickRunningProcessCommand { get; }
+
+    public RelayCommand RemoveProcessModeAppCommand { get; }
 
     public RelayCommand PickAmneziaConfigCommand { get; }
 
@@ -1702,6 +1702,42 @@ public sealed class MainViewModel : ViewModelBase
     }
 
     private void RemoveProcessModeApp(string app) => ProcessModeApplications.Remove(app);
+
+    private async void PickRunningProcesses()
+    {
+        try
+        {
+            var running = await Task.Run(RunningApplicationScanner.GetUserApplications);
+            var candidates = running
+                .Where(x => !ContainsIgnoreCase(ProcessModeApplications, x.FileName))
+                .ToList();
+
+            if (candidates.Count == 0)
+            {
+                UiHostContext.Current.ShowMessage(
+                    "Все запущенные приложения уже в списке.",
+                    "Process Mode",
+                    MessageDialogIcon.Information);
+                return;
+            }
+
+            var selected = await UiHostContext.Current.PickRunningApplicationsAsync(candidates);
+            if (!IsProcessModeEditingEnabled)
+            {
+                return;
+            }
+
+            foreach (var fileName in selected.Where(x => !ContainsIgnoreCase(ProcessModeApplications, x)))
+            {
+                ProcessModeApplications.Add(fileName);
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error(ex, "Ошибка выбора запущенных приложений");
+            UiHostContext.Current.ShowMessage(ex.Message, "Ошибка", MessageDialogIcon.Error);
+        }
+    }
 
     private async Task ToggleProcessModeAsync()
     {

@@ -1,9 +1,11 @@
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage.Pickers;
 using WinRT.Interop;
+using WPT.Core.Services;
 using WPT.ViewModels.Abstractions;
 
 namespace WPT.WinUI.Services;
@@ -122,6 +124,75 @@ public sealed class WinUiHost : IUiHost
         }).GetAwaiter().GetResult();
 
         return result;
+    }
+
+    public async Task<IReadOnlyList<string>> PickRunningApplicationsAsync(IReadOnlyList<RunningApplication> applications)
+    {
+        if (_window?.Content is not FrameworkElement root)
+        {
+            return [];
+        }
+
+        var list = new ListView
+        {
+            SelectionMode = ListViewSelectionMode.Multiple,
+            MaxHeight = 420,
+            MinWidth = 360
+        };
+
+        foreach (var application in applications)
+        {
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
+            row.Children.Add(new Image { Width = 20, Height = 20, Source = LoadExecutableIcon(application.Path) });
+            row.Children.Add(new TextBlock { Text = application.FileName, VerticalAlignment = VerticalAlignment.Center });
+
+            var item = new ListViewItem { Content = row, Tag = application.FileName };
+            ToolTipService.SetToolTip(item, application.Path);
+            list.Items.Add(item);
+        }
+
+        var dialog = new ContentDialog
+        {
+            Title = "Запущенные приложения",
+            Content = list,
+            PrimaryButtonText = "Добавить",
+            CloseButtonText = "Отмена",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = root.XamlRoot
+        };
+
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return [];
+        }
+
+        return list.SelectedItems.OfType<ListViewItem>().Select(x => (string)x.Tag).ToList();
+    }
+
+    private static BitmapImage? LoadExecutableIcon(string path)
+    {
+        try
+        {
+            using var icon = System.Drawing.Icon.ExtractAssociatedIcon(path);
+            if (icon == null)
+            {
+                return null;
+            }
+
+            using var bitmap = icon.ToBitmap();
+            using var stream = new MemoryStream();
+            bitmap.Save(stream, System.Drawing.Imaging.ImageFormat.Png);
+            stream.Position = 0;
+
+            var image = new BitmapImage();
+            image.SetSource(stream.AsRandomAccessStream());
+            return image;
+        }
+        catch
+        {
+            // Нет доступа к файлу или у exe нет иконки — строка просто без картинки
+            return null;
+        }
     }
 
     private DispatcherQueue ResolveDispatcher() =>

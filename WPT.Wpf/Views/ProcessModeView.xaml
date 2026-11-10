@@ -264,11 +264,11 @@
 
                                     Command="{Binding AddProcessModeAppCommand}" />
 
-                            <Button Grid.Column="2" Content="Выбрать запущенный процесс" Margin="8,0,0,0"
+                            <Button Grid.Column="2" Content="Из запущенных" Margin="8,0,0,0"
 
                                     Style="{StaticResource SecondaryButton}"
 
-                                    Visibility="Collapsed"
+                                    ToolTip="Выбрать из запущенных приложений"
 
                                     Command="{Binding PickRunningProcessCommand}" />
 

@@ -45,6 +45,7 @@
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <TextBox Text="{Binding NewProcessModeApp, Mode=TwoWay}"
                                      IsEnabled="{Binding IsProcessModeEditingEnabled}"
@@ -55,6 +56,10 @@
                                     Style="{StaticResource CompactAddButton}"
                                     IsEnabled="{Binding IsProcessModeEditingEnabled}"
                                     Command="{Binding AddProcessModeAppCommand}" />
+                            <Button Grid.Column="2"
+                                    Content="Из запущенных"
+                                    ToolTipService.ToolTip="Выбрать из запущенных приложений"
+                                    Command="{Binding PickRunningProcessCommand}" />
                         </Grid>
                         <ItemsControl Style="{StaticResource FullWidthItemsControl}"
                                       ItemsSource="{Binding ProcessModeApplications}">

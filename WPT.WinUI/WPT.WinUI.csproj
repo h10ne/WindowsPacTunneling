@@ -19,7 +19,7 @@
     <ProjectPriFileName>resources.pri</ProjectPriFileName>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Version>2.0.1</Version>
+    <Version>2.1.0</Version>
     <Product>WPT</Product>
     <AssemblyTitle>WPT</AssemblyTitle>
   </PropertyGroup>
