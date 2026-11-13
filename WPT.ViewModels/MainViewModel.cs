@@ -311,6 +311,11 @@ public sealed class MainViewModel : ViewModelBase
 
     public bool IsVpnConfigDropHintVisible => !HasPendingVpnConfig;
 
+    // Windows не пропускает перетаскивание из Проводника в окно, запущенное от имени администратора
+    public string VpnConfigDropHint { get; } = AdminHelper.IsRunningAsAdmin()
+        ? "Нажмите, чтобы выбрать файл конфигурации (.conf). Перетаскивание недоступно, пока WPT запущен от имени администратора"
+        : "Перетащите сюда файл конфигурации (.conf) или нажмите для выбора";
+
     public SavedProxyConfigItem? SelectedSavedProxyConfig
     {
         get => _selectedSavedProxyConfig;

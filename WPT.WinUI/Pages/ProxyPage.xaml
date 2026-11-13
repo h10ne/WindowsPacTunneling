@@ -87,7 +87,7 @@
                                             Padding="8,6"
                                             MinHeight="56">
                                         <Grid VerticalAlignment="Center">
-                                            <TextBlock Text="Перетащите сюда файл конфигурации (.conf) или нажмите для выбора"
+                                            <TextBlock Text="{Binding VpnConfigDropHint}"
                                                        TextWrapping="Wrap"
                                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                                        Visibility="{Binding IsVpnConfigDropHintVisible, Converter={StaticResource BoolToVis}}" />

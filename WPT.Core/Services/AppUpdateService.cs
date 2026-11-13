@@ -11,7 +11,10 @@ public static class AppUpdateService
 {
     private const string Repository = "h10ne/WindowsPacTunneling";
 
-    private const string ReleaseAssetName = "WPT.exe";
+    // Ассет по имени сборки, а не exe-файла (его переименовывают): WPT → WPT.exe, «WPT WPF» → WPT.WPF.exe
+    // (GitHub заменяет пробел в имени ассета на точку). Иначе WPF-клиент обновлялся до WinUI
+    private static readonly string ReleaseAssetName =
+        $"{(System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name ?? "WPT").Replace(' ', '.')}.exe";
 
     private const int UpdaterMaxRetries = 120;
 

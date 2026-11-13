@@ -21,15 +21,22 @@ internal sealed class WsHandshakeException : Exception
 
 internal sealed class RawWebSocketClient : IAsyncDisposable
 {
+    // Защита от мусорной длины кадра, как в upstream
+    private const int MaxMessageLen = 16 * 1024 * 1024;
+
     private readonly TcpClient _tcpClient;
-    private readonly NetworkStream _stream;
     private readonly SslStream _sslStream;
+
+    // Пишут двое: мост и ответ на ping из цикла чтения, а SslStream не допускает параллельной записи
+    private readonly SemaphoreSlim _writeLock = new(1, 1);
+
+    // Сборка сообщения, пришедшего несколькими кадрами (opcode 0x0)
+    private readonly MemoryStream _frag = new();
     private bool _closed;
 
-    private RawWebSocketClient(TcpClient tcpClient, NetworkStream stream, SslStream sslStream)
+    private RawWebSocketClient(TcpClient tcpClient, SslStream sslStream)
     {
         _tcpClient = tcpClient;
-        _stream = stream;
         _sslStream = sslStream;
     }
 
@@ -49,11 +56,33 @@ internal sealed class RawWebSocketClient : IAsyncDisposable
         cts.CancelAfter(timeout.Value);
 
         var tcp = new TcpClient();
-        await tcp.ConnectAsync(host, 443, cts.Token);
+        try
+        {
+            return await HandshakeAsync(tcp, host, domain, bufferSize, path, sni, timeout.Value, cts.Token);
+        }
+        catch
+        {
+            // Иначе при таймауте или ответе не 101 сокет остаётся висеть
+            tcp.Dispose();
+            throw;
+        }
+    }
+
+    private static async Task<RawWebSocketClient> HandshakeAsync(
+        TcpClient tcp,
+        string host,
+        string domain,
+        int bufferSize,
+        string path,
+        string sni,
+        TimeSpan timeout,
+        CancellationToken token)
+    {
+        await tcp.ConnectAsync(host, 443, token);
 
         var networkStream = tcp.GetStream();
-        networkStream.ReadTimeout = (int)timeout.Value.TotalMilliseconds;
-        networkStream.WriteTimeout = (int)timeout.Value.TotalMilliseconds;
+        networkStream.ReadTimeout = (int)timeout.TotalMilliseconds;
+        networkStream.WriteTimeout = (int)timeout.TotalMilliseconds;
 
         var sslStream = new SslStream(networkStream, leaveInnerStreamOpen: false, (_, _, _, _) => true);
         await sslStream.AuthenticateAsClientAsync(new SslClientAuthenticationOptions
@@ -61,7 +90,7 @@ internal sealed class RawWebSocketClient : IAsyncDisposable
             TargetHost = sni,
             EnabledSslProtocols = System.Security.Authentication.SslProtocols.Tls12
                 | System.Security.Authentication.SslProtocols.Tls13
-        }, cts.Token);
+        }, token);
 
         try
         {
@@ -86,13 +115,13 @@ internal sealed class RawWebSocketClient : IAsyncDisposable
             .ToString();
 
         var requestBytes = Encoding.ASCII.GetBytes(request);
-        await sslStream.WriteAsync(requestBytes, cts.Token);
-        await sslStream.FlushAsync(cts.Token);
+        await sslStream.WriteAsync(requestBytes, token);
+        await sslStream.FlushAsync(token);
 
         var responseLines = new List<string>();
         while (true)
         {
-            var line = await ReadLineAsync(sslStream, cts.Token);
+            var line = await ReadLineAsync(sslStream, token);
             if (string.IsNullOrEmpty(line))
             {
                 break;
@@ -110,19 +139,29 @@ internal sealed class RawWebSocketClient : IAsyncDisposable
         var statusCode = parts.Length >= 2 && int.TryParse(parts[1], out var code) ? code : 0;
         if (statusCode == 101)
         {
-            return new RawWebSocketClient(tcp, networkStream, sslStream);
+            return new RawWebSocketClient(tcp, sslStream);
         }
 
-        tcp.Dispose();
         throw new WsHandshakeException(statusCode, responseLines[0]);
     }
 
-    public async Task SendAsync(byte[] data, CancellationToken cancellationToken)
+    public Task SendAsync(byte[] data, CancellationToken cancellationToken) =>
+        WriteFrameAsync(0x2, data, cancellationToken);
+
+    private async Task WriteFrameAsync(int opcode, byte[] data, CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_closed, this);
-        var frame = BuildFrame(0x2, data, mask: true);
-        await _sslStream.WriteAsync(frame, cancellationToken);
-        await _sslStream.FlushAsync(cancellationToken);
+        var frame = BuildFrame(opcode, data, mask: true);
+        await _writeLock.WaitAsync(cancellationToken);
+        try
+        {
+            await _sslStream.WriteAsync(frame, cancellationToken);
+            await _sslStream.FlushAsync(cancellationToken);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
     }
 
     public async Task SendBatchAsync(IReadOnlyList<byte[]> parts, CancellationToken cancellationToken)
@@ -137,18 +176,38 @@ internal sealed class RawWebSocketClient : IAsyncDisposable
     {
         while (!_closed)
         {
-            var (opcode, payload) = await ReadFrameAsync(cancellationToken);
+            var (fin, opcode, payload) = await ReadFrameAsync(cancellationToken);
             switch (opcode)
             {
                 case 0x8:
                     _closed = true;
                     return null;
                 case 0x9:
-                    await SendAsync(BuildFrame(0xA, payload, mask: true), cancellationToken);
+                    // Pong отдельным управляющим кадром. Раньше он уходил внутри binary-кадра и ломал поток MTProto
+                    await WriteFrameAsync(0xA, payload, cancellationToken);
                     continue;
+                case 0x0:
                 case 0x1:
                 case 0x2:
-                    return payload;
+                    if (fin && _frag.Length == 0)
+                    {
+                        return payload;
+                    }
+
+                    _frag.Write(payload);
+                    if (_frag.Length > MaxMessageLen)
+                    {
+                        throw new IOException($"WS message too large: {_frag.Length} bytes");
+                    }
+
+                    if (!fin)
+                    {
+                        continue;
+                    }
+
+                    var message = _frag.ToArray();
+                    _frag.SetLength(0);
+                    return message;
             }
         }
 
@@ -157,44 +216,51 @@ internal sealed class RawWebSocketClient : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        if (_closed)
+        // Сокет закрываем и после close-кадра от сервера, раньше в этом случае он утекал
+        if (!_closed)
         {
-            return;
-        }
-
-        _closed = true;
-        try
-        {
-            await _sslStream.WriteAsync(BuildFrame(0x8, [], mask: true), CancellationToken.None);
-            await _sslStream.FlushAsync(CancellationToken.None);
-        }
-        catch
-        {
+            _closed = true;
+            try
+            {
+                await _sslStream.WriteAsync(BuildFrame(0x8, [], mask: true), CancellationToken.None);
+                await _sslStream.FlushAsync(CancellationToken.None);
+            }
+            catch
+            {
+            }
         }
 
         await _sslStream.DisposeAsync();
         _tcpClient.Dispose();
     }
 
-    private async Task<(int Opcode, byte[] Payload)> ReadFrameAsync(CancellationToken cancellationToken)
+    private async Task<(bool Fin, int Opcode, byte[] Payload)> ReadFrameAsync(CancellationToken cancellationToken)
     {
         var header = new byte[2];
         await ReadExactAsync(_sslStream, header, cancellationToken);
+        var fin = (header[0] & 0x80) != 0;
         var opcode = header[0] & 0x0F;
-        var length = header[1] & 0x7F;
+        var rawLength = (ulong)(header[1] & 0x7F);
 
-        if (length == 126)
+        if (rawLength == 126)
         {
             var lenBuf = new byte[2];
             await ReadExactAsync(_sslStream, lenBuf, cancellationToken);
-            length = BinaryPrimitives.ReadUInt16BigEndian(lenBuf);
+            rawLength = BinaryPrimitives.ReadUInt16BigEndian(lenBuf);
         }
-        else if (length == 127)
+        else if (rawLength == 127)
         {
             var lenBuf = new byte[8];
             await ReadExactAsync(_sslStream, lenBuf, cancellationToken);
-            length = (int)BinaryPrimitives.ReadUInt64BigEndian(lenBuf);
+            rawLength = BinaryPrimitives.ReadUInt64BigEndian(lenBuf);
         }
+
+        if (rawLength > MaxMessageLen)
+        {
+            throw new IOException($"WS frame too large: {rawLength} bytes");
+        }
+
+        var length = (int)rawLength;
 
         byte[] payload;
         if ((header[1] & 0x80) != 0)
@@ -211,7 +277,7 @@ internal sealed class RawWebSocketClient : IAsyncDisposable
             await ReadExactAsync(_sslStream, payload, cancellationToken);
         }
 
-        return (opcode, payload);
+        return (fin, opcode, payload);
     }
 
     private static byte[] BuildFrame(int opcode, byte[] data, bool mask)

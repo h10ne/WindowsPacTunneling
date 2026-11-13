@@ -32,6 +32,10 @@ internal static class TgWsProxyConstants
         [203] = "91.105.192.100"
     };
 
+    // SNI для domain fronting: TLS к IP Telegram под чужим именем, сам WS-хост уходит в заголовке Host,
+    // так DPI не видит kws*.web.telegram.org
+    public const string FrontingSni = "sprinthost.ru";
+
     public static string[] WsDomains(int dc, bool isMedia)
     {
         if (dc == 203)
@@ -44,6 +48,6 @@ internal static class TgWsProxyConstants
             return [$"kws{dc}-1.web.telegram.org", $"kws{dc}.web.telegram.org"];
         }
 
-        return [$"kws{dc}.web.telegram.org", $"kws{dc}-1.web.telegram.org"];
+        return [$"kws{dc}.web.telegram.org"];
     }
 }

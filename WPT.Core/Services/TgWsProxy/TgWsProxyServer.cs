@@ -10,8 +10,10 @@ public sealed class TgWsProxyServer : IAsyncDisposable
     private readonly CfProxyBalancer _balancer = new();
     private readonly byte[] _secretBytes;
     private readonly ConcurrentDictionary<string, DateTime> _dcFailUntil = new();
-    private readonly ConcurrentDictionary<string, DateTime> _ipFailUntil = new();
-    private readonly HashSet<string> _wsBlacklist = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, bool> _wsBlacklist = new(StringComparer.Ordinal);
+
+    // Какой способ подключения сработал последним: прямой SNI или fronting. С него и начинаем
+    private volatile bool _tryFrontingFirst;
     private TcpListener? _listener;
     private CancellationTokenSource? _cts;
     private Task? _acceptLoop;
@@ -158,72 +160,25 @@ public sealed class TgWsProxyServer : IAsyncDisposable
 
             var dcKey = $"{parsed.DcId}{(parsed.IsMedia ? "m" : string.Empty)}";
             var target = _config.DcRedirects.GetValueOrDefault(parsed.DcId);
-            var now = DateTime.UtcNow;
-
-            if (!_config.DcRedirects.ContainsKey(parsed.DcId)
-                || _wsBlacklist.Contains(dcKey)
-                || (target != null && _ipFailUntil.TryGetValue(target, out var ipUntil) && now < ipUntil))
+            // Без своего IP, в чёрном списке или недавно не подключался: сразу в fallback, не тратя время на WS
+            if (target == null
+                || _wsBlacklist.ContainsKey(dcKey)
+                || (_dcFailUntil.TryGetValue(dcKey, out var dcUntil) && DateTime.UtcNow < dcUntil))
             {
-                if (await RunFallbackAsync(stream, relayInit, ctx, parsed.DcId, parsed.IsMedia, splitter, cancellationToken))
-                {
-                    return;
-                }
+                await RunFallbackAsync(stream, relayInit, ctx, parsed.DcId, parsed.IsMedia, splitter, cancellationToken);
+                return;
             }
 
-            var wsTimeout = _dcFailUntil.TryGetValue(dcKey, out var dcUntil) && now < dcUntil
-                ? TimeSpan.FromSeconds(2)
-                : TimeSpan.FromSeconds(5);
-
-            RawWebSocketClient? ws = null;
-            var wsFailedRedirect = false;
-            var wsTimedOut = false;
-            var allRedirects = true;
-
-            if (target != null)
-            {
-                foreach (var domain in TgWsProxyConstants.WsDomains(parsed.DcId, parsed.IsMedia))
-                {
-                    try
-                    {
-                        ws = await RawWebSocketClient.ConnectAsync(
-                            target,
-                            domain,
-                            _config.BufferSize,
-                            timeout: wsTimeout,
-                            cancellationToken: cancellationToken);
-                        allRedirects = false;
-                        break;
-                    }
-                    catch (WsHandshakeException ex) when (ex.IsRedirect)
-                    {
-                        wsFailedRedirect = true;
-                    }
-                    catch (TimeoutException)
-                    {
-                        wsTimedOut = true;
-                        break;
-                    }
-                    catch
-                    {
-                        allRedirects = false;
-                    }
-                }
-            }
-
+            var (ws, allRedirects) = await ConnectWsAsync(target, parsed.DcId, parsed.IsMedia, cancellationToken);
             if (ws == null)
             {
-                if (wsTimedOut && target != null)
+                if (allRedirects)
                 {
-                    _ipFailUntil[target] = now.AddHours(1);
-                }
-
-                if (wsFailedRedirect && allRedirects)
-                {
-                    _wsBlacklist.Add(dcKey);
+                    _wsBlacklist[dcKey] = true;
                 }
                 else
                 {
-                    _dcFailUntil[dcKey] = now.AddMinutes(1);
+                    _dcFailUntil[dcKey] = DateTime.UtcNow.AddMinutes(1);
                 }
 
                 await RunFallbackAsync(stream, relayInit, ctx, parsed.DcId, parsed.IsMedia, splitter, cancellationToken);
@@ -231,14 +186,12 @@ public sealed class TgWsProxyServer : IAsyncDisposable
             }
 
             _dcFailUntil.TryRemove(dcKey, out _);
-            if (target != null)
-            {
-                _ipFailUntil.TryRemove(target, out _);
-            }
 
-            await ws.SendAsync(relayInit, cancellationToken);
-            await TgWsBridge.BridgeWebSocketAsync(stream, ws, ctx, splitter, cancellationToken);
-            await ws.DisposeAsync();
+            await using (ws)
+            {
+                await ws.SendAsync(relayInit, cancellationToken);
+                await TgWsBridge.BridgeWebSocketAsync(stream, ws, ctx, splitter, cancellationToken);
+            }
         }
         catch (OperationCanceledException)
         {
@@ -249,6 +202,45 @@ public sealed class TgWsProxyServer : IAsyncDisposable
         catch
         {
         }
+    }
+
+    // Как _connect_one в upstream: на каждый домен прямой SNI и fronting, начиная с последнего удачного.
+    // Блокировка по SNI kws*.web.telegram.org обходится fronting'ом на тот же IP
+    private async Task<(RawWebSocketClient? Ws, bool AllRedirects)> ConnectWsAsync(
+        string target,
+        int dc,
+        bool isMedia,
+        CancellationToken cancellationToken)
+    {
+        var allRedirects = true;
+        foreach (var domain in TgWsProxyConstants.WsDomains(dc, isMedia))
+        {
+            var frontingFirst = _tryFrontingFirst;
+            foreach (var fronted in new[] { frontingFirst, !frontingFirst })
+            {
+                try
+                {
+                    var ws = await RawWebSocketClient.ConnectAsync(
+                        target,
+                        domain,
+                        _config.BufferSize,
+                        sni: fronted ? TgWsProxyConstants.FrontingSni : null,
+                        timeout: TimeSpan.FromSeconds(fronted ? 7 : 8),
+                        cancellationToken: cancellationToken);
+                    _tryFrontingFirst = fronted;
+                    return (ws, false);
+                }
+                catch (WsHandshakeException ex) when (ex.IsRedirect)
+                {
+                }
+                catch (Exception) when (!cancellationToken.IsCancellationRequested)
+                {
+                    allRedirects = false;
+                }
+            }
+        }
+
+        return (null, allRedirects);
     }
 
     private async Task<bool> RunFallbackAsync(

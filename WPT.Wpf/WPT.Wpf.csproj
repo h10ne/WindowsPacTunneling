@@ -12,7 +12,7 @@
         <AssemblyName>WPT WPF</AssemblyName>
         <Product>WPT</Product>
         <AssemblyTitle>WPT</AssemblyTitle>
-        <Version>2.1.4</Version>
+        <Version>2.1.5</Version>
     </PropertyGroup>
 
     <ItemGroup>

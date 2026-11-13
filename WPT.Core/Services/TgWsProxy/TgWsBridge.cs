@@ -78,22 +78,15 @@ internal static class TgWsBridge
             }
         }, token);
 
-        var completed = await Task.WhenAny(clientToWs, wsToClient);
+        await Task.WhenAny(clientToWs, wsToClient);
         linked.Cancel();
 
-        try
-        {
-            await completed;
-        }
-        catch (OperationCanceledException)
-        {
-        }
-
+        // Как в BridgeTcpAsync: обрыв любой стороны — штатный конец сессии
         try
         {
             await Task.WhenAll(clientToWs, wsToClient);
         }
-        catch (OperationCanceledException)
+        catch
         {
         }
     }
@@ -106,23 +99,24 @@ internal static class TgWsBridge
         TgWsCryptoContext ctx,
         CancellationToken cancellationToken)
     {
+        using var tcp = new TcpClient();
         try
         {
-            using var tcp = new TcpClient();
             using var connectCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             connectCts.CancelAfter(TimeSpan.FromSeconds(10));
             await tcp.ConnectAsync(destination, port, connectCts.Token);
-
-            await using var remoteStream = tcp.GetStream();
-            await remoteStream.WriteAsync(relayInit, cancellationToken);
-            await remoteStream.FlushAsync(cancellationToken);
-            await BridgeTcpAsync(clientStream, remoteStream, ctx, cancellationToken);
-            return true;
         }
-        catch
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
         {
             return false;
         }
+
+        // Сессия уже пошла: её обрыв — конец соединения, а не повод пробовать другой путь
+        await using var remoteStream = tcp.GetStream();
+        await remoteStream.WriteAsync(relayInit, cancellationToken);
+        await remoteStream.FlushAsync(cancellationToken);
+        await BridgeTcpAsync(clientStream, remoteStream, ctx, cancellationToken);
+        return true;
     }
 
     public static async Task<bool> CfProxyFallbackAsync(
@@ -139,22 +133,29 @@ internal static class TgWsBridge
         foreach (var baseDomain in balancer.GetDomainsForDc(dc))
         {
             var domain = $"kws{dc}.{baseDomain}";
+            RawWebSocketClient ws;
             try
             {
-                await using var ws = await RawWebSocketClient.ConnectAsync(
+                ws = await RawWebSocketClient.ConnectAsync(
                     domain,
                     domain,
                     config.BufferSize,
                     cancellationToken: cancellationToken);
+            }
+            catch (Exception) when (!cancellationToken.IsCancellationRequested)
+            {
+                continue;
+            }
 
+            // Перебираем домены только до подключения: после relayInit повтор испортил бы поток клиента
+            await using (ws)
+            {
                 balancer.UpdateDomainForDc(dc, baseDomain);
                 await ws.SendAsync(relayInit, cancellationToken);
                 await BridgeWebSocketAsync(clientStream, ws, ctx, splitter, cancellationToken);
-                return true;
             }
-            catch
-            {
-            }
+
+            return true;
         }
 
         return false;
@@ -168,10 +169,11 @@ internal static class TgWsBridge
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var token = linked.Token;
-        var buffer = new byte[65536];
 
+        // У каждого направления свой буфер: чтения идут одновременно и затирали бы данные друг друга
         var up = Task.Run(async () =>
         {
+            var buffer = new byte[65536];
             while (!token.IsCancellationRequested)
             {
                 var read = await clientStream.ReadAsync(buffer, token);
@@ -189,6 +191,7 @@ internal static class TgWsBridge
 
         var down = Task.Run(async () =>
         {
+            var buffer = new byte[65536];
             while (!token.IsCancellationRequested)
             {
                 var read = await remoteStream.ReadAsync(buffer, token);
@@ -206,5 +209,15 @@ internal static class TgWsBridge
 
         await Task.WhenAny(up, down);
         linked.Cancel();
+
+        // Вторая сторона обрывается отменой или закрытием сокета — это штатный конец сессии,
+        // но ошибку нужно забрать, иначе она всплывает как необработанное исключение задачи
+        try
+        {
+            await Task.WhenAll(up, down);
+        }
+        catch
+        {
+        }
     }
 }

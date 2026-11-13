@@ -203,7 +203,7 @@
 
                                                    Foreground="{StaticResource TextSecondaryBrush}"
 
-                                                   Text="Перетащите сюда файл конфигурации (.conf) или нажмите для выбора"
+                                                   Text="{Binding VpnConfigDropHint}"
 
                                                    Visibility="{Binding IsVpnConfigDropHintVisible, Converter={StaticResource BoolToVis}}" />
 

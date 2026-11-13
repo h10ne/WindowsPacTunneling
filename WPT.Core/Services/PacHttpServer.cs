@@ -123,6 +123,13 @@ public sealed class PacHttpServer : IDisposable
 
         _cts.Cancel();
 
+        // Stop прерывает ожидающий GetContextAsync, и цикл сам ловит его ошибку. Прерывание через WaitAsync
+        // оставляло GetContextAsync висеть, и он падал на закрытом listener необработанным исключением задачи
+        if (_listener is { IsListening: true })
+        {
+            _listener.Stop();
+        }
+
         try
         {
             _listenTask?.Wait(TimeSpan.FromSeconds(2));
@@ -135,16 +142,8 @@ public sealed class PacHttpServer : IDisposable
         _cts = null;
         _listenTask = null;
 
-        if (_listener != null)
-        {
-            if (_listener.IsListening)
-            {
-                _listener.Stop();
-            }
-
-            _listener.Close();
-            _listener = null;
-        }
+        _listener?.Close();
+        _listener = null;
     }
 
     private async Task ListenLoopAsync(HttpListener listener, CancellationToken cancellationToken)
@@ -155,11 +154,7 @@ public sealed class PacHttpServer : IDisposable
 
             try
             {
-                context = await listener.GetContextAsync().WaitAsync(cancellationToken);
-            }
-            catch (OperationCanceledException)
-            {
-                break;
+                context = await listener.GetContextAsync();
             }
             catch (ObjectDisposedException)
             {
