@@ -62,7 +62,11 @@ public sealed partial class ProxyPage : Page
         viewModel.TryImportVpnConfigFile(items[0].Path);
     }
 
-    private void OnVpnConfigDropZoneTapped(object sender, TappedRoutedEventArgs e)
+    private void OnVpnConfigDropZoneTapped(object sender, TappedRoutedEventArgs e) => PickVpnConfigFile();
+
+    private void OnPickVpnConfigClick(object sender, RoutedEventArgs e) => PickVpnConfigFile();
+
+    private void PickVpnConfigFile()
     {
         if (!IsVpnConfigDropEnabled() || DataContext is not MainViewModel viewModel)
         {

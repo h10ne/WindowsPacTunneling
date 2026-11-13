@@ -50,7 +50,11 @@ public partial class ProxyView
         }
     }
 
-    private void OnVpnConfigDropZoneClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    private void OnVpnConfigDropZoneClick(object sender, System.Windows.Input.MouseButtonEventArgs e) => PickVpnConfigFile();
+
+    private void OnPickVpnConfigClick(object sender, System.Windows.RoutedEventArgs e) => PickVpnConfigFile();
+
+    private void PickVpnConfigFile()
     {
         if (!IsVpnConfigDropEnabled())
         {

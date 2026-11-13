@@ -145,85 +145,94 @@
 
                             <TextBlock Text="Конфигурация AmneziaWG" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
 
-                            <Border x:Name="VpnConfigDropZone"
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Button Grid.Column="1"
+                                        Content="Выбрать файл…"
+                                        Click="OnPickVpnConfigClick"
+                                        IsEnabled="{Binding IsProxyEditingEnabled}"
+                                        Margin="8,0,0,0" />
+                                <Border x:Name="VpnConfigDropZone"
 
-                                    AllowDrop="True"
+                                        AllowDrop="True"
 
-                                    DragOver="OnVpnConfigDragOver"
+                                        DragOver="OnVpnConfigDragOver"
 
-                                    Drop="OnVpnConfigDrop"
+                                        Drop="OnVpnConfigDrop"
 
-                                    MouseLeftButtonUp="OnVpnConfigDropZoneClick"
+                                        MouseLeftButtonUp="OnVpnConfigDropZoneClick"
 
-                                    Background="{StaticResource InputBrush}"
+                                        Background="{StaticResource InputBrush}"
 
-                                    BorderBrush="{StaticResource BorderBrush}"
+                                        BorderBrush="{StaticResource BorderBrush}"
 
-                                    BorderThickness="1"
+                                        BorderThickness="1"
 
-                                    CornerRadius="6"
+                                        CornerRadius="6"
 
-                                    Padding="8,6"
+                                        Padding="8,6">
 
-                                    Margin="0,0,0,12">
+                                    <Border.Style>
 
-                                <Border.Style>
+                                        <Style TargetType="Border">
 
-                                    <Style TargetType="Border">
+                                            <Setter Property="Cursor" Value="Hand" />
 
-                                        <Setter Property="Cursor" Value="Hand" />
+                                            <Style.Triggers>
 
-                                        <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsProxyEditingEnabled}" Value="False">
 
-                                            <DataTrigger Binding="{Binding IsProxyEditingEnabled}" Value="False">
+                                                    <Setter Property="Cursor" Value="Arrow" />
 
-                                                <Setter Property="Cursor" Value="Arrow" />
+                                                </DataTrigger>
 
-                                            </DataTrigger>
+                                            </Style.Triggers>
 
-                                        </Style.Triggers>
+                                        </Style>
 
-                                    </Style>
+                                    </Border.Style>
 
-                                </Border.Style>
+                                    <Grid VerticalAlignment="Center">
 
-                                <Grid VerticalAlignment="Center">
+                                        <TextBlock VerticalAlignment="Center"
 
-                                    <TextBlock VerticalAlignment="Center"
+                                                   TextWrapping="Wrap"
 
-                                               TextWrapping="Wrap"
+                                                   Foreground="{StaticResource TextSecondaryBrush}"
 
-                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                                   Text="Перетащите сюда файл конфигурации (.conf) или нажмите для выбора"
 
-                                               Text="Перетащите сюда файл конфигурации (.conf) или нажмите для выбора"
-
-                                               Visibility="{Binding IsVpnConfigDropHintVisible, Converter={StaticResource BoolToVis}}" />
+                                                   Visibility="{Binding IsVpnConfigDropHintVisible, Converter={StaticResource BoolToVis}}" />
 
 
 
-                                    <StackPanel Visibility="{Binding HasPendingVpnConfig, Converter={StaticResource BoolToVis}}">
+                                        <StackPanel Visibility="{Binding HasPendingVpnConfig, Converter={StaticResource BoolToVis}}">
 
-                                        <TextBlock Text="{Binding VpnConfigEndpoint, Mode=OneWay}"
+                                            <TextBlock Text="{Binding VpnConfigEndpoint, Mode=OneWay}"
 
-                                                   FontWeight="SemiBold"
+                                                       FontWeight="SemiBold"
 
-                                                   Foreground="{StaticResource TextPrimaryBrush}"
+                                                       Foreground="{StaticResource TextPrimaryBrush}"
 
-                                                   TextTrimming="CharacterEllipsis" />
+                                                       TextTrimming="CharacterEllipsis" />
 
-                                        <TextBlock Text="{Binding VpnConfigSourceName, Mode=OneWay}"
+                                            <TextBlock Text="{Binding VpnConfigSourceName, Mode=OneWay}"
 
-                                                   Style="{StaticResource CaptionText}"
+                                                       Style="{StaticResource CaptionText}"
 
-                                                   Margin="0,2,0,0"
+                                                       Margin="0,2,0,0"
 
-                                                   TextTrimming="CharacterEllipsis" />
+                                                       TextTrimming="CharacterEllipsis" />
 
-                                    </StackPanel>
+                                        </StackPanel>
 
-                                </Grid>
+                                    </Grid>
 
-                            </Border>
+                                </Border>
+                            </Grid>
 
 
 

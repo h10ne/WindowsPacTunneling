@@ -65,32 +65,43 @@
                             </StackPanel>
                             <StackPanel Spacing="4">
                                 <TextBlock Text="Конфигурация AmneziaWG" Style="{StaticResource CaptionText}" />
-                                <Border x:Name="VpnConfigDropZone"
-                                        AllowDrop="True"
-                                        DragOver="OnVpnConfigDragOver"
-                                        Drop="OnVpnConfigDrop"
-                                        Tapped="OnVpnConfigDropZoneTapped"
-                                        Background="{ThemeResource ControlFillColorDefaultBrush}"
-                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                        BorderThickness="1"
-                                        CornerRadius="6"
-                                        Padding="8,6"
-                                        MinHeight="56">
-                                    <Grid VerticalAlignment="Center">
-                                        <TextBlock Text="Перетащите сюда файл конфигурации (.conf) или нажмите для выбора"
-                                                   TextWrapping="Wrap"
-                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                   Visibility="{Binding IsVpnConfigDropHintVisible, Converter={StaticResource BoolToVis}}" />
-                                        <StackPanel Visibility="{Binding HasPendingVpnConfig, Converter={StaticResource BoolToVis}}">
-                                            <TextBlock Text="{Binding VpnConfigEndpoint, Mode=OneWay}"
-                                                       FontWeight="SemiBold"
-                                                       TextTrimming="CharacterEllipsis" />
-                                            <TextBlock Text="{Binding VpnConfigSourceName, Mode=OneWay}"
-                                                       Style="{StaticResource CaptionText}"
-                                                       TextTrimming="CharacterEllipsis" />
-                                        </StackPanel>
-                                    </Grid>
-                                </Border>
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Button Grid.Column="1"
+                                            Content="Выбрать файл…"
+                                            Click="OnPickVpnConfigClick"
+                                            IsEnabled="{Binding IsProxyEditingEnabled}"
+                                            VerticalAlignment="Stretch" />
+                                    <Border x:Name="VpnConfigDropZone"
+                                            AllowDrop="True"
+                                            DragOver="OnVpnConfigDragOver"
+                                            Drop="OnVpnConfigDrop"
+                                            Tapped="OnVpnConfigDropZoneTapped"
+                                            Background="{ThemeResource ControlFillColorDefaultBrush}"
+                                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="6"
+                                            Padding="8,6"
+                                            MinHeight="56">
+                                        <Grid VerticalAlignment="Center">
+                                            <TextBlock Text="Перетащите сюда файл конфигурации (.conf) или нажмите для выбора"
+                                                       TextWrapping="Wrap"
+                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                       Visibility="{Binding IsVpnConfigDropHintVisible, Converter={StaticResource BoolToVis}}" />
+                                            <StackPanel Visibility="{Binding HasPendingVpnConfig, Converter={StaticResource BoolToVis}}">
+                                                <TextBlock Text="{Binding VpnConfigEndpoint, Mode=OneWay}"
+                                                           FontWeight="SemiBold"
+                                                           TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Text="{Binding VpnConfigSourceName, Mode=OneWay}"
+                                                           Style="{StaticResource CaptionText}"
+                                                           TextTrimming="CharacterEllipsis" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                </Grid>
                             </StackPanel>
                             <Grid ColumnSpacing="12">
                                 <Grid.ColumnDefinitions>
