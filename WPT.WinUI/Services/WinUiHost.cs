@@ -3,7 +3,6 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.ApplicationModel.DataTransfer;
-using Windows.Storage.Pickers;
 using WinRT.Interop;
 using WPT.Core.Services;
 using WPT.ViewModels.Abstractions;
@@ -96,34 +95,30 @@ public sealed class WinUiHost : IUiHost
             return null;
         }
 
+        // WinRT FileOpenPicker под администратором падает с E_FAIL, а WPT обычно запущен от администратора.
+        // Win32-диалог работает в любом режиме и модален синхронно
         string? result = null;
-        RunOnUiThreadAsync(async () =>
+        RunOnUiThreadAsync(() =>
         {
-            var picker = new FileOpenPicker
+            using var dialog = new System.Windows.Forms.OpenFileDialog
             {
-                SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
-                ViewMode = PickerViewMode.List
+                Title = title,
+                Filter = filter,
+                CheckFileExists = true
             };
 
-            foreach (var part in filter.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            if (dialog.ShowDialog(new Win32Owner(WindowNative.GetWindowHandle(_window))) == System.Windows.Forms.DialogResult.OK)
             {
-                if (part.StartsWith('*'))
-                {
-                    picker.FileTypeFilter.Add(part.TrimStart('*'));
-                }
+                result = dialog.FileName;
             }
-
-            if (picker.FileTypeFilter.Count == 0)
-            {
-                picker.FileTypeFilter.Add(".conf");
-            }
-
-            InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(_window));
-            var file = await picker.PickSingleFileAsync();
-            result = file?.Path;
         }).GetAwaiter().GetResult();
 
         return result;
+    }
+
+    private sealed class Win32Owner(IntPtr handle) : System.Windows.Forms.IWin32Window
+    {
+        public IntPtr Handle => handle;
     }
 
     public async Task<IReadOnlyList<string>> PickRunningApplicationsAsync(IReadOnlyList<RunningApplication> applications)
