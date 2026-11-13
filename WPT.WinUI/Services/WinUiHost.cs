@@ -63,15 +63,29 @@ public sealed class WinUiHost : IUiHost
         RunOnUiThread(() => _ = ShowDialogAsync(title, message, confirm: false));
     }
 
-    public MessageDialogResult ShowConfirm(string message, string title)
+    // ContentDialog показывается асинхронно: синхронное ожидание в UI-потоке возвращало «Нет» до ответа пользователя
+    public Task<MessageDialogResult> ShowConfirmAsync(string message, string title)
     {
-        MessageDialogResult result = MessageDialogResult.No;
-        RunOnUiThreadAsync(async () =>
+        var dispatcher = ResolveDispatcher();
+        if (dispatcher.HasThreadAccess)
         {
-            result = await ShowDialogAsync(title, message, confirm: true);
-        }).GetAwaiter().GetResult();
+            return ShowDialogAsync(title, message, confirm: true);
+        }
 
-        return result;
+        var tcs = new TaskCompletionSource<MessageDialogResult>();
+        _ = dispatcher.TryEnqueue(async () =>
+        {
+            try
+            {
+                tcs.SetResult(await ShowDialogAsync(title, message, confirm: true));
+            }
+            catch (Exception ex)
+            {
+                tcs.SetException(ex);
+            }
+        });
+
+        return tcs.Task;
     }
 
     public void Shutdown(int exitCode = 0) =>

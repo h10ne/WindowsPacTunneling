@@ -3465,7 +3465,7 @@ public sealed class MainViewModel : ViewModelBase
         var latestLabel = string.IsNullOrWhiteSpace(_latestAppVersionLabel)
             ? "новой версии"
             : _latestAppVersionLabel;
-        var confirm = UiHostContext.Current.ShowConfirm(
+        var confirm = await UiHostContext.Current.ShowConfirmAsync(
             $"Установить обновление до {latestLabel}? Приложение будет перезапущено.",
             "Обновление");
 

@@ -37,7 +37,7 @@ public interface IUiHost
 
     void ShowMessage(string message, string title, MessageDialogIcon icon = MessageDialogIcon.Information);
 
-    MessageDialogResult ShowConfirm(string message, string title);
+    Task<MessageDialogResult> ShowConfirmAsync(string message, string title);
 
     void Shutdown(int exitCode = 0);
 

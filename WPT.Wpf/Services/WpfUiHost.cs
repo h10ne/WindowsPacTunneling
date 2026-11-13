@@ -45,20 +45,20 @@ public sealed class WpfUiHost : IUiHost
         RunOnUiThread(() => MessageBox.Show(message, title, MessageBoxButton.OK, MapIcon(icon)));
     }
 
-    public MessageDialogResult ShowConfirm(string message, string title)
+    public Task<MessageDialogResult> ShowConfirmAsync(string message, string title)
     {
         var dispatcher = WpfApplication.Current?.Dispatcher;
         if (dispatcher == null || dispatcher.CheckAccess())
         {
-            return MessageBox.Show(message, title, MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes
-                ? MessageDialogResult.Yes
-                : MessageDialogResult.No;
+            return Task.FromResult(Confirm());
         }
 
-        return dispatcher.Invoke(() =>
+        return dispatcher.InvokeAsync(Confirm).Task;
+
+        MessageDialogResult Confirm() =>
             MessageBox.Show(message, title, MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes
                 ? MessageDialogResult.Yes
-                : MessageDialogResult.No);
+                : MessageDialogResult.No;
     }
 
     public void Shutdown(int exitCode = 0) =>
